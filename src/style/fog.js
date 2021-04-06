@@ -8,6 +8,7 @@ import {validateStyle, validateFog, emitValidationErrors} from './validate_style
 import {Properties, Transitionable, Transitioning, PossiblyEvaluated, DataConstantProperty} from './properties.js';
 import MercatorCoordinate from '../geo/mercator_coordinate.js';
 import Color from '../style-spec/util/color.js';
+import {FOG_PITCH_START, FOG_PITCH_END} from './fog_constants.js';
 import type {FogSpecification} from '../style-spec/types.js';
 import type EvaluationParameters from './evaluation_parameters.js';
 import type {TransitionParameters} from './properties.js';
@@ -28,10 +29,6 @@ const properties: Properties<Props> = new Properties({
 });
 
 const TRANSITION_SUFFIX = '-transition';
-
-export const FOG_PITCH_START = 55;
-export const FOG_PITCH_END = 65;
-export const FOG_SYMBOL_CLIPPING_THRESHOLD = 0.9;
 
 export class FogSampler {
     range: [number, number];
