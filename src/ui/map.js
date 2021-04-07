@@ -159,7 +159,7 @@ const defaultOptions = {
     accessToken: null,
     fadeDuration: 300,
     crossSourceCollisions: true,
-    devicePixelRatio: null,
+    devicePixelRatio: browser.devicePixelRatio,
 };
 
 /**
@@ -288,6 +288,7 @@ class Map extends Camera {
     _canvasContainer: HTMLElement;
     _controlContainer: HTMLElement;
     _controlPositions: {[_: string]: HTMLElement};
+    _devicePixelRatio: ?number;
     _interactive: ?boolean;
     _showTileBoundaries: ?boolean;
     _showTerrainWireframe: ?boolean;
@@ -407,8 +408,7 @@ class Map extends Camera {
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
 
-        browser.devicePixelRatio = options.devicePixelRatio;
-        this._browser = browser;
+        this._devicePixelRatio = options.devicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -515,6 +515,10 @@ class Map extends Camera {
         this.on('dataloading', (event: MapDataEvent) => {
             this.fire(new Event(`${event.dataType}dataloading`, event));
         });
+    }
+
+    get devicePixelRatio() {
+        return this._devicePixelRatio;
     }
 
     /*
@@ -2393,7 +2397,7 @@ class Map extends Camera {
     }
 
     _resizeCanvas(width: number, height: number) {
-        const pixelRatio = browser.devicePixelRatio || 1;
+        const pixelRatio = this.devicePixelRatio || 1;
 
         // Request the required canvas size taking the pixelratio into account.
         this._canvas.width = pixelRatio * width;
@@ -2587,6 +2591,7 @@ class Map extends Camera {
             showPadding: this.showPadding,
             gpuTiming: !!this.listens('gpu-timing-layer'),
             speedIndexTiming: this.speedIndexTiming,
+            devicePixelRatio: this.devicePixelRatio,
         });
 
         this.fire(new Event('render'));

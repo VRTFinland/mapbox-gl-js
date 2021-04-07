@@ -54,7 +54,7 @@ const circleUniformValues = (
             tile,
             layer.paint.get('circle-translate'),
             layer.paint.get('circle-translate-anchor')),
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_extrude_scale': extrudeScale
     };
 };

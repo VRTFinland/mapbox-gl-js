@@ -9,8 +9,6 @@ let reducedMotionQuery: MediaQueryList;
 
 let stubTime;
 
-let devicePixelRatio = null;
-
 /**
  * @private
  */
@@ -56,11 +54,7 @@ const exported = {
         return linkEl.href;
     },
 
-    get devicePixelRatio() { return devicePixelRatio || window.devicePixelRatio; },
-
-    set devicePixelRatio(value) {
-        devicePixelRatio = value;
-    },
+    get devicePixelRatio() { return window.devicePixelRatio; },
 
     get prefersReducedMotion(): boolean {
         if (!window.matchMedia) return false;
