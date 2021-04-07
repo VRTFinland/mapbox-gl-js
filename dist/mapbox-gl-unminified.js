@@ -42995,7 +42995,8 @@ const defaultOptions$4 = {
     transformRequest: null,
     accessToken: null,
     fadeDuration: 300,
-    crossSourceCollisions: true
+    crossSourceCollisions: true,
+    devicePixelRatio: null
 };
 class Map extends Camera {
     constructor(options) {
@@ -43014,6 +43015,8 @@ class Map extends Camera {
         }
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
+        ref_properties.exported.devicePixelRatio = options.devicePixelRatio;
+        this._browser = ref_properties.exported;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -43107,7 +43110,6 @@ class Map extends Camera {
         this.on('dataloading', event => {
             this.fire(new ref_properties.Event(`${ event.dataType }dataloading`, event));
         });
-        this._browser = ref_properties.exported;
     }
     _getMapId() {
         return this._mapId;
