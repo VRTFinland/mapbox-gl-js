@@ -91,7 +91,6 @@ type PainterOptions = {
     fadeDuration: number,
     isInitialLoad: boolean,
     speedIndexTiming: boolean,
-    devicePixelRatio: number,
 }
 
 /**
@@ -104,6 +103,7 @@ class Painter {
     context: Context;
     transform: Transform;
     _tileTextures: {[_: number]: Array<Texture> };
+    _devicePixelRatio: number;
     numSublayers: number;
     depthEpsilon: number;
     emptyProgramConfiguration: ProgramConfiguration;
@@ -147,9 +147,10 @@ class Painter {
     frameCopies: Array<WebGLTexture>;
     loadTimeStamps: Array<number>;
 
-    constructor(gl: WebGLRenderingContext, transform: Transform) {
+    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number) {
         this.context = new Context(gl);
         this.transform = transform;
+        this._devicePixelRatio = devicePixelRatio;
         this._tileTextures = {};
         this.frameCopies = [];
         this.loadTimeStamps = [];
@@ -183,7 +184,7 @@ class Painter {
     }
 
     get devicePixelRatio(): number {
-        return this.options.devicePixelRatio;
+        return this._devicePixelRatio;
     }
 
     /*

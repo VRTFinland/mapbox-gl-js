@@ -2591,7 +2591,6 @@ class Map extends Camera {
             showPadding: this.showPadding,
             gpuTiming: !!this.listens('gpu-timing-layer'),
             speedIndexTiming: this.speedIndexTiming,
-            devicePixelRatio: this.devicePixelRatio,
         });
 
         this.fire(new Event('render'));
