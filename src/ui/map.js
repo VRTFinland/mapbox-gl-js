@@ -2425,7 +2425,7 @@ class Map extends Camera {
 
         storeAuthState(gl, true);
 
-        this.painter = new Painter(gl, this.transform);
+        this.painter = new Painter(gl, this.transform, this.devicePixelRatio);
         this.on('data', (event: MapDataEvent) => {
             if (event.dataType === 'source') {
                 this.painter.setTileLoadedFlag(true);
