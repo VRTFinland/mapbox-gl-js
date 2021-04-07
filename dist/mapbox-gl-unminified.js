@@ -505,7 +505,6 @@ function b64DecodeUnicode(str) {
 let linkEl;
 let reducedMotionQuery;
 let stubTime;
-let devicePixelRatio = null;
 const exported$1 = {
     now() {
         if (stubTime !== undefined) {
@@ -541,10 +540,7 @@ const exported$1 = {
         return linkEl.href;
     },
     get devicePixelRatio() {
-        return devicePixelRatio || window$1.devicePixelRatio;
-    },
-    set devicePixelRatio(value) {
-        devicePixelRatio = value;
+        return window$1.devicePixelRatio;
     },
     get prefersReducedMotion() {
         if (!window$1.matchMedia)
@@ -27796,9 +27792,9 @@ class Aabb {
     }
 }
 
-function loadSprite (baseURL, requestManager, callback) {
+function loadSprite (baseURL, devicePixelRatio = ref_properties.exported.devicePixelRatio, requestManager, callback) {
     let json, image, error;
-    const format = ref_properties.exported.devicePixelRatio > 1 ? '@2x' : '';
+    const format = devicePixelRatio > 1 ? '@2x' : '';
     let jsonRequest = ref_properties.getJSON(requestManager.transformRequest(requestManager.normalizeSpriteURL(baseURL, format, '.json'), ref_properties.ResourceType.SpriteJSON), (err, data) => {
         jsonRequest = null;
         if (!error) {
@@ -29580,7 +29576,7 @@ class VectorTileSource extends ref_properties.Evented {
             tileSize: this.tileSize * tile.tileID.overscaleFactor(),
             type: this.type,
             source: this.id,
-            pixelRatio: ref_properties.exported.devicePixelRatio,
+            pixelRatio: this.map.devicePixelRatio,
             showCollisionBoxes: this.map.showCollisionBoxes,
             promoteId: this.promoteId,
             isSymbolTile: tile.isSymbolTile
@@ -29726,7 +29722,7 @@ class RasterTileSource extends ref_properties.Evented {
         return !this.tileBounds || this.tileBounds.contains(tileID.canonical);
     }
     loadTile(tile, callback) {
-        const use2x = ref_properties.exported.devicePixelRatio >= 2;
+        const use2x = this.map.devicePixelRatio >= 2;
         const url = this.map._requestManager.normalizeTileURL(tile.tileID.canonical.url(this.tiles, this.scheme), use2x, this.tileSize);
         tile.request = ref_properties.getImage(this.map._requestManager.transformRequest(url, ref_properties.ResourceType.Tile), (err, img, cacheControl, expires) => {
             delete tile.request;
@@ -30014,7 +30010,7 @@ class GeoJSONSource extends ref_properties.Evented {
             maxZoom: this.maxzoom,
             tileSize: this.tileSize,
             source: this.id,
-            pixelRatio: ref_properties.exported.devicePixelRatio,
+            pixelRatio: this.map.devicePixelRatio,
             showCollisionBoxes: this.map.showCollisionBoxes,
             promoteId: this.promoteId
         };
@@ -33085,7 +33081,7 @@ class Style extends ref_properties.Evented {
         this.fire(new ref_properties.Event('style.load'));
     }
     _loadSprite(url) {
-        this._spriteRequest = loadSprite(url, this.map._requestManager, (err, images) => {
+        this._spriteRequest = loadSprite(url, this.map.devicePixelRatio, this.map._requestManager, (err, images) => {
             this._spriteRequest = null;
             if (err) {
                 this.fire(new ref_properties.ErrorEvent(err));
@@ -36250,7 +36246,7 @@ const circleUniformValues = (painter, coord, tile, layer) => {
     return {
         'u_camera_to_center_distance': transform.cameraToCenterDistance,
         'u_matrix': painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('circle-translate'), layer.paint.get('circle-translate-anchor')),
-        'u_device_pixel_ratio': ref_properties.exported.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_extrude_scale': extrudeScale
     };
 };
@@ -36385,7 +36381,7 @@ const lineUniformValues = (painter, tile, layer, matrix) => {
     return {
         'u_matrix': calculateMatrix(painter, tile, layer, matrix),
         'u_ratio': 1 / pixelsToTileUnits(tile, 1, transform.zoom),
-        'u_device_pixel_ratio': ref_properties.exported.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_units_to_pixels': [
             1 / transform.pixelsToGLUnits[0],
             1 / transform.pixelsToGLUnits[1]
@@ -36405,7 +36401,7 @@ const linePatternUniformValues = (painter, tile, layer, crossfade, matrix) => {
         'u_matrix': calculateMatrix(painter, tile, layer, matrix),
         'u_texsize': tile.imageAtlasTexture.size,
         'u_ratio': 1 / pixelsToTileUnits(tile, 1, transform.zoom),
-        'u_device_pixel_ratio': ref_properties.exported.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_image': 0,
         'u_scale': [
             tileZoomRatio,
@@ -36437,7 +36433,7 @@ const lineSDFUniformValues = (painter, tile, layer, dasharray, crossfade, matrix
             tileRatio / widthB,
             -posB.height / 2
         ],
-        'u_sdfgamma': lineAtlas.width / (Math.min(widthA, widthB) * 256 * ref_properties.exported.devicePixelRatio) / 2,
+        'u_sdfgamma': lineAtlas.width / (Math.min(widthA, widthB) * 256 * painter.devicePixelRatio) / 2,
         'u_image': 0,
         'u_tex_y_a': posA.y,
         'u_tex_y_b': posB.y,
@@ -36585,7 +36581,7 @@ const symbolSDFUniformValues = (functionType, size, rotateInShader, pitchWithMap
     const {cameraToCenterDistance, _pitch} = painter.transform;
     return ref_properties.extend(symbolIconUniformValues(functionType, size, rotateInShader, pitchWithMap, painter, matrix, labelPlaneMatrix, glCoordMatrix, isText, texSize), {
         'u_gamma_scale': pitchWithMap ? cameraToCenterDistance * Math.cos(painter.terrain ? 0 : _pitch) : 1,
-        'u_device_pixel_ratio': ref_properties.exported.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_is_halo': +isHalo
     });
 };
@@ -37742,7 +37738,7 @@ function drawDebugSSRect(painter, x, y, width, height, color) {
     const context = painter.context;
     const gl = context.gl;
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(x * ref_properties.exported.devicePixelRatio, y * ref_properties.exported.devicePixelRatio, width * ref_properties.exported.devicePixelRatio, height * ref_properties.exported.devicePixelRatio);
+    gl.scissor(x * painter.devicePixelRatio, y * painter.devicePixelRatio, width * painter.devicePixelRatio, height * painter.devicePixelRatio);
     context.clear({ color });
     gl.disable(gl.SCISSOR_TEST);
 }
@@ -38021,9 +38017,12 @@ class Painter {
     get terrain() {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
     }
+    get devicePixelRatio() {
+        return this.options.devicePixelRatio;
+    }
     resize(width, height) {
-        this.width = width * ref_properties.exported.devicePixelRatio;
-        this.height = height * ref_properties.exported.devicePixelRatio;
+        this.width = width * this.devicePixelRatio;
+        this.height = height * this.devicePixelRatio;
         this.context.viewport.set([
             0,
             0,
@@ -42996,7 +42995,7 @@ const defaultOptions$4 = {
     accessToken: null,
     fadeDuration: 300,
     crossSourceCollisions: true,
-    devicePixelRatio: null
+    devicePixelRatio: ref_properties.exported.devicePixelRatio
 };
 class Map extends Camera {
     constructor(options) {
@@ -43015,8 +43014,7 @@ class Map extends Camera {
         }
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
-        ref_properties.exported.devicePixelRatio = options.devicePixelRatio;
-        this._browser = ref_properties.exported;
+        this._devicePixelRatio = options.devicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -43110,6 +43108,9 @@ class Map extends Camera {
         this.on('dataloading', event => {
             this.fire(new ref_properties.Event(`${ event.dataType }dataloading`, event));
         });
+    }
+    get devicePixelRatio() {
+        return this._devicePixelRatio;
     }
     _getMapId() {
         return this._mapId;
@@ -43712,7 +43713,7 @@ class Map extends Camera {
         this._container.addEventListener('scroll', this._onMapScroll, false);
     }
     _resizeCanvas(width, height) {
-        const pixelRatio = ref_properties.exported.devicePixelRatio || 1;
+        const pixelRatio = this.devicePixelRatio || 1;
         this._canvas.width = pixelRatio * width;
         this._canvas.height = pixelRatio * height;
         this._canvas.style.width = `${ width }px`;
@@ -43828,7 +43829,8 @@ class Map extends Camera {
             isInitialLoad: this._isInitialLoad,
             showPadding: this.showPadding,
             gpuTiming: !!this.listens('gpu-timing-layer'),
-            speedIndexTiming: this.speedIndexTiming
+            speedIndexTiming: this.speedIndexTiming,
+            devicePixelRatio: this.devicePixelRatio
         });
         this.fire(new ref_properties.Event('render'));
         if (this.loaded() && !this._loaded) {
