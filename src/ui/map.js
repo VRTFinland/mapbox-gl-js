@@ -161,6 +161,7 @@ const defaultOptions = {
     fadeDuration: 300,
     crossSourceCollisions: true,
     devicePixelRatio: browser.devicePixelRatio,
+    featureDevicePixelRatio: browser.devicePixelRatio,
 };
 
 /**
@@ -2404,7 +2405,7 @@ class Map extends Camera {
     }
 
     _resizeCanvas(width: number, height: number) {
-        const pixelRatio = this.devicePixelRatio || 1;
+        const pixelRatio = this.featureDevicePixelRatio || 1;
 
         // Request the required canvas size taking the pixelratio into account.
         this._canvas.width = pixelRatio * width;

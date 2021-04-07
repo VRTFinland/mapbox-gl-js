@@ -27792,7 +27792,7 @@ class Aabb {
     }
 }
 
-function loadSprite (baseURL, devicePixelRatio = ref_properties.exported.devicePixelRatio, requestManager, callback) {
+function loadSprite (baseURL, devicePixelRatio, requestManager, callback) {
     let json, image, error;
     const format = devicePixelRatio > 1 ? '@2x' : '';
     let jsonRequest = ref_properties.getJSON(requestManager.transformRequest(requestManager.normalizeSpriteURL(baseURL, format, '.json'), ref_properties.ResourceType.SpriteJSON), (err, data) => {
@@ -43000,7 +43000,8 @@ const defaultOptions$4 = {
     accessToken: null,
     fadeDuration: 300,
     crossSourceCollisions: true,
-    devicePixelRatio: ref_properties.exported.devicePixelRatio
+    devicePixelRatio: ref_properties.exported.devicePixelRatio,
+    featureDevicePixelRatio: ref_properties.exported.devicePixelRatio
 };
 class Map extends Camera {
     constructor(options) {
@@ -43722,7 +43723,7 @@ class Map extends Camera {
         this._container.addEventListener('scroll', this._onMapScroll, false);
     }
     _resizeCanvas(width, height) {
-        const pixelRatio = this.devicePixelRatio || 1;
+        const pixelRatio = this.featureDevicePixelRatio || 1;
         this._canvas.width = pixelRatio * width;
         this._canvas.height = pixelRatio * height;
         this._canvas.style.width = `${ width }px`;
