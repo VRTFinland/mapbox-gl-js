@@ -36246,7 +36246,7 @@ const circleUniformValues = (painter, coord, tile, layer) => {
     return {
         'u_camera_to_center_distance': transform.cameraToCenterDistance,
         'u_matrix': painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('circle-translate'), layer.paint.get('circle-translate-anchor')),
-        'u_device_pixel_ratio': painter.devicePixelRatio,
+        'u_device_pixel_ratio': painter.featureDevicePixelRatio,
         'u_extrude_scale': extrudeScale
     };
 };
@@ -36381,7 +36381,7 @@ const lineUniformValues = (painter, tile, layer, matrix) => {
     return {
         'u_matrix': calculateMatrix(painter, tile, layer, matrix),
         'u_ratio': 1 / pixelsToTileUnits(tile, 1, transform.zoom),
-        'u_device_pixel_ratio': painter.devicePixelRatio,
+        'u_device_pixel_ratio': painter.featureDevicePixelRatio,
         'u_units_to_pixels': [
             1 / transform.pixelsToGLUnits[0],
             1 / transform.pixelsToGLUnits[1]
@@ -36401,7 +36401,7 @@ const linePatternUniformValues = (painter, tile, layer, crossfade, matrix) => {
         'u_matrix': calculateMatrix(painter, tile, layer, matrix),
         'u_texsize': tile.imageAtlasTexture.size,
         'u_ratio': 1 / pixelsToTileUnits(tile, 1, transform.zoom),
-        'u_device_pixel_ratio': painter.devicePixelRatio,
+        'u_device_pixel_ratio': painter.featureDevicePixelRatio,
         'u_image': 0,
         'u_scale': [
             tileZoomRatio,
@@ -36433,7 +36433,7 @@ const lineSDFUniformValues = (painter, tile, layer, dasharray, crossfade, matrix
             tileRatio / widthB,
             -posB.height / 2
         ],
-        'u_sdfgamma': lineAtlas.width / (Math.min(widthA, widthB) * 256 * painter.devicePixelRatio) / 2,
+        'u_sdfgamma': lineAtlas.width / (Math.min(widthA, widthB) * 256 * painter.featureDevicePixelRatio) / 2,
         'u_image': 0,
         'u_tex_y_a': posA.y,
         'u_tex_y_b': posB.y,
@@ -36581,7 +36581,7 @@ const symbolSDFUniformValues = (functionType, size, rotateInShader, pitchWithMap
     const {cameraToCenterDistance, _pitch} = painter.transform;
     return ref_properties.extend(symbolIconUniformValues(functionType, size, rotateInShader, pitchWithMap, painter, matrix, labelPlaneMatrix, glCoordMatrix, isText, texSize), {
         'u_gamma_scale': pitchWithMap ? cameraToCenterDistance * Math.cos(painter.terrain ? 0 : _pitch) : 1,
-        'u_device_pixel_ratio': painter.devicePixelRatio,
+        'u_device_pixel_ratio': painter.featureDevicePixelRatio,
         'u_is_halo': +isHalo
     });
 };
@@ -37990,10 +37990,11 @@ const draw = {
     custom: drawCustom
 };
 class Painter {
-    constructor(gl, transform, devicePixelRatio) {
+    constructor(gl, transform, devicePixelRatio, featureDevicePixelRatio) {
         this.context = new Context(gl);
         this.transform = transform;
         this._devicePixelRatio = devicePixelRatio;
+        this._featureDevicePixelRatio = featureDevicePixelRatio;
         this._tileTextures = {};
         this.frameCopies = [];
         this.loadTimeStamps = [];
@@ -38017,6 +38018,9 @@ class Painter {
     }
     get terrain() {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
+    }
+    get featureDevicePixelRatio() {
+        return this._featureDevicePixelRatio;
     }
     get devicePixelRatio() {
         return this._devicePixelRatio;
@@ -43016,6 +43020,7 @@ class Map extends Camera {
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
         this._devicePixelRatio = options.devicePixelRatio;
+        this._featureDevicePixelRatio = options.featureDevicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -43112,6 +43117,9 @@ class Map extends Camera {
     }
     get devicePixelRatio() {
         return this._devicePixelRatio;
+    }
+    get featureDevicePixelRatio() {
+        return this._featureDevicePixelRatio;
     }
     _getMapId() {
         return this._mapId;
@@ -43732,7 +43740,7 @@ class Map extends Camera {
             return;
         }
         ref_properties.storeAuthState(gl, true);
-        this.painter = new Painter(gl, this.transform, this.devicePixelRatio);
+        this.painter = new Painter(gl, this.transform, this.devicePixelRatio, this.featureDevicePixelRatio);
         this.on('data', event => {
             if (event.dataType === 'source') {
                 this.painter.setTileLoadedFlag(true);
