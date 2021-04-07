@@ -37990,9 +37990,10 @@ const draw = {
     custom: drawCustom
 };
 class Painter {
-    constructor(gl, transform) {
+    constructor(gl, transform, devicePixelRatio) {
         this.context = new Context(gl);
         this.transform = transform;
+        this._devicePixelRatio = devicePixelRatio;
         this._tileTextures = {};
         this.frameCopies = [];
         this.loadTimeStamps = [];
@@ -38018,7 +38019,7 @@ class Painter {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
     }
     get devicePixelRatio() {
-        return this.options.devicePixelRatio;
+        return this._devicePixelRatio;
     }
     resize(width, height) {
         this.width = width * this.devicePixelRatio;
@@ -43829,8 +43830,7 @@ class Map extends Camera {
             isInitialLoad: this._isInitialLoad,
             showPadding: this.showPadding,
             gpuTiming: !!this.listens('gpu-timing-layer'),
-            speedIndexTiming: this.speedIndexTiming,
-            devicePixelRatio: this.devicePixelRatio
+            speedIndexTiming: this.speedIndexTiming
         });
         this.fire(new ref_properties.Event('render'));
         if (this.loaded() && !this._loaded) {
