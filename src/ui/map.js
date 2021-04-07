@@ -108,6 +108,7 @@ type MapOptions = {
     testMode: ?boolean,
     locale?: Object,
     devicePixelRatio?: number,
+    featureDevicePixelRatio?: number,
 };
 
 const defaultMinZoom = -2;
@@ -289,6 +290,7 @@ class Map extends Camera {
     _controlContainer: HTMLElement;
     _controlPositions: {[_: string]: HTMLElement};
     _devicePixelRatio: ?number;
+    _featureDevicePixelRatio: ?number;
     _interactive: ?boolean;
     _showTileBoundaries: ?boolean;
     _showTerrainWireframe: ?boolean;
@@ -409,6 +411,7 @@ class Map extends Camera {
         super(transform, options);
 
         this._devicePixelRatio = options.devicePixelRatio;
+        this._featureDevicePixelRatio = options.featureDevicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -519,6 +522,10 @@ class Map extends Camera {
 
     get devicePixelRatio() {
         return this._devicePixelRatio;
+    }
+
+    get featureDevicePixelRatio() {
+        return this._featureDevicePixelRatio;
     }
 
     /*
@@ -2425,7 +2432,7 @@ class Map extends Camera {
 
         storeAuthState(gl, true);
 
-        this.painter = new Painter(gl, this.transform, this.devicePixelRatio);
+        this.painter = new Painter(gl, this.transform, this.devicePixelRatio, this.featureDevicePixelRatio);
         this.on('data', (event: MapDataEvent) => {
             if (event.dataType === 'source') {
                 this.painter.setTileLoadedFlag(true);

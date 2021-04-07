@@ -104,6 +104,7 @@ class Painter {
     transform: Transform;
     _tileTextures: {[_: number]: Array<Texture> };
     _devicePixelRatio: number;
+    _featureDevicePixelRatio: number;
     numSublayers: number;
     depthEpsilon: number;
     emptyProgramConfiguration: ProgramConfiguration;
@@ -147,10 +148,11 @@ class Painter {
     frameCopies: Array<WebGLTexture>;
     loadTimeStamps: Array<number>;
 
-    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number) {
+    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number, featureDevicePixelRatio: number) {
         this.context = new Context(gl);
         this.transform = transform;
         this._devicePixelRatio = devicePixelRatio;
+        this._featureDevicePixelRatio = featureDevicePixelRatio;
         this._tileTextures = {};
         this.frameCopies = [];
         this.loadTimeStamps = [];
@@ -181,6 +183,10 @@ class Painter {
 
     get terrain(): ?Terrain {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
+    }
+
+    get featureDevicePixelRatio(): number {
+        return this._featureDevicePixelRatio;
     }
 
     get devicePixelRatio(): number {

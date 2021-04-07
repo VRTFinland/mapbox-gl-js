@@ -198,7 +198,7 @@ const symbolSDFUniformValues = (
         rotateInShader, pitchWithMap, painter, matrix, labelPlaneMatrix,
         glCoordMatrix, isText, texSize), {
         'u_gamma_scale': pitchWithMap ? cameraToCenterDistance * Math.cos(painter.terrain ? 0 : _pitch) : 1,
-        'u_device_pixel_ratio': painter.devicePixelRatio,
+        'u_device_pixel_ratio': painter.featureDevicePixelRatio,
         'u_is_halo': +isHalo
     });
 };
