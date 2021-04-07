@@ -43732,7 +43732,7 @@ class Map extends Camera {
             return;
         }
         ref_properties.storeAuthState(gl, true);
-        this.painter = new Painter(gl, this.transform);
+        this.painter = new Painter(gl, this.transform, this.devicePixelRatio);
         this.on('data', event => {
             if (event.dataType === 'source') {
                 this.painter.setTileLoadedFlag(true);
