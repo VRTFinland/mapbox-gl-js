@@ -106,7 +106,8 @@ type MapOptions = {
     transformRequest?: RequestTransformFunction,
     accessToken: string,
     testMode: ?boolean,
-    locale?: Object
+    locale?: Object,
+    devicePixelRatio?: number,
 };
 
 const defaultMinZoom = -2;
@@ -157,7 +158,8 @@ const defaultOptions = {
     transformRequest: null,
     accessToken: null,
     fadeDuration: 300,
-    crossSourceCollisions: true
+    crossSourceCollisions: true,
+    devicePixelRatio: null,
 };
 
 /**
@@ -405,6 +407,8 @@ class Map extends Camera {
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
 
+        browser.devicePixelRatio = options.devicePixelRatio;
+        this._browser = browser;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -511,7 +515,6 @@ class Map extends Camera {
         this.on('dataloading', (event: MapDataEvent) => {
             this.fire(new Event(`${event.dataType}dataloading`, event));
         });
-        this._browser = browser;
     }
 
     /*
