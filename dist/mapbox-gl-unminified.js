@@ -39432,7 +39432,9 @@ class Transform {
     }
     pointCoordinate(p) {
         const horizonOffset = this.horizonLineFromTop(false);
-        const clamped = new ref_properties.pointGeometry(p.x, Math.max(horizonOffset, p.y));
+        const xCoef = this.width / this.map.painter.width;
+        const yCoef = this.height / this.map.painter.height;
+        const clamped = new ref_properties.pointGeometry(xCoef * p.x, Math.max(horizonOffset, yCoef * p.y));
         return this.rayIntersectionCoordinate(this.pointRayIntersection(clamped));
     }
     pointCoordinate3D(p) {
@@ -43015,6 +43017,7 @@ class Map extends Camera {
         }
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
+        transform.map = this;
         this._devicePixelRatio = options.devicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
