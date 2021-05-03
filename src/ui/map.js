@@ -407,6 +407,7 @@ class Map extends Camera {
 
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
+        transform.map = this;
 
         this._devicePixelRatio = options.devicePixelRatio;
         this._interactive = options.interactive;
