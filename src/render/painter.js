@@ -91,7 +91,7 @@ type PainterOptions = {
     gpuTiming: boolean,
     fadeDuration: number,
     isInitialLoad: boolean,
-    speedIndexTiming: boolean
+    speedIndexTiming: boolean,
 }
 
 /**
@@ -104,6 +104,7 @@ class Painter {
     context: Context;
     transform: Transform;
     _tileTextures: {[_: number]: Array<Texture> };
+    _devicePixelRatio: number;
     numSublayers: number;
     depthEpsilon: number;
     emptyProgramConfiguration: ProgramConfiguration;
@@ -148,9 +149,10 @@ class Painter {
     frameCopies: Array<WebGLTexture>;
     loadTimeStamps: Array<number>;
 
-    constructor(gl: WebGLRenderingContext, transform: Transform) {
+    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number) {
         this.context = new Context(gl);
         this.transform = transform;
+        this._devicePixelRatio = devicePixelRatio;
         this._tileTextures = {};
         this.frameCopies = [];
         this.loadTimeStamps = [];
@@ -199,13 +201,17 @@ class Painter {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
     }
 
+    get devicePixelRatio(): number {
+        return this._devicePixelRatio;
+    }
+
     /*
      * Update the GL viewport, projection matrix, and transforms to compensate
      * for a new width and height value.
      */
     resize(width: number, height: number) {
-        this.width = width * browser.devicePixelRatio;
-        this.height = height * browser.devicePixelRatio;
+        this.width = width * this.devicePixelRatio;
+        this.height = height * this.devicePixelRatio;
         this.context.viewport.set([0, 0, this.width, this.height]);
 
         if (this.style) {

@@ -64,7 +64,7 @@ function drawDebugSSRect(painter: Painter, x: number, y: number, width: number, 
     const gl = context.gl;
 
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(x * browser.devicePixelRatio, y * browser.devicePixelRatio, width * browser.devicePixelRatio, height * browser.devicePixelRatio);
+    gl.scissor(x * painter.devicePixelRatio, y * painter.devicePixelRatio, width * painter.devicePixelRatio, height * painter.devicePixelRatio);
     context.clear({color});
     gl.disable(gl.SCISSOR_TEST);
 }

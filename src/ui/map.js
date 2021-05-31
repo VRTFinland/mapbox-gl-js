@@ -117,7 +117,8 @@ type MapOptions = {
     transformRequest?: RequestTransformFunction,
     accessToken: string,
     testMode: ?boolean,
-    locale?: Object
+    locale?: Object,
+    devicePixelRatio?: number,
 };
 
 const defaultMinZoom = -2;
@@ -168,7 +169,8 @@ const defaultOptions = {
     transformRequest: null,
     accessToken: null,
     fadeDuration: 300,
-    crossSourceCollisions: true
+    crossSourceCollisions: true,
+    devicePixelRatio: browser.devicePixelRatio,
 };
 
 /**
@@ -294,6 +296,7 @@ class Map extends Camera {
     _canvasContainer: HTMLElement;
     _controlContainer: HTMLElement;
     _controlPositions: {[_: string]: HTMLElement};
+    _devicePixelRatio: ?number;
     _interactive: ?boolean;
     _showTileBoundaries: ?boolean;
     _showTerrainWireframe: ?boolean;
@@ -416,7 +419,9 @@ class Map extends Camera {
 
         const transform = new Transform(options.minZoom, options.maxZoom, options.minPitch, options.maxPitch, options.renderWorldCopies);
         super(transform, options);
+        transform.map = this;
 
+        this._devicePixelRatio = options.devicePixelRatio;
         this._interactive = options.interactive;
         this._maxTileCacheSize = options.maxTileCacheSize;
         this._failIfMajorPerformanceCaveat = options.failIfMajorPerformanceCaveat;
@@ -528,6 +533,10 @@ class Map extends Camera {
         this.on('dataloading', (event: MapDataEvent) => {
             this.fire(new Event(`${event.dataType}dataloading`, event));
         });
+    }
+
+    get devicePixelRatio() {
+        return this._devicePixelRatio;
     }
 
     /*
@@ -2474,7 +2483,7 @@ class Map extends Camera {
     }
 
     _resizeCanvas(width: number, height: number) {
-        const pixelRatio = browser.devicePixelRatio || 1;
+        const pixelRatio = this.devicePixelRatio || 1;
 
         // Request the required canvas size taking the pixelratio into account.
         this._canvas.width = pixelRatio * width;
@@ -2513,7 +2522,7 @@ class Map extends Camera {
 
         storeAuthState(gl, true);
 
-        this.painter = new Painter(gl, this.transform);
+        this.painter = new Painter(gl, this.transform, this.devicePixelRatio);
         this.on('data', (event: MapDataEvent) => {
             if (event.dataType === 'source') {
                 this.painter.setTileLoadedFlag(true);
