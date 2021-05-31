@@ -39434,6 +39434,13 @@ class Transform {
         const horizonOffset = this.horizonLineFromTop(false);
         const xCoef = this.width / this.map.painter.width;
         const yCoef = this.height / this.map.painter.height;
+        console.log({
+            w: this.width,
+            pw: this.map.painter.width,
+            h: this.height,
+            ph: this.map.painter.height,
+            d: this.map.devicePixelRatio
+        });
         const clamped = new ref_properties.pointGeometry(xCoef * p.x, Math.max(horizonOffset, yCoef * p.y));
         return this.rayIntersectionCoordinate(this.pointRayIntersection(clamped));
     }
