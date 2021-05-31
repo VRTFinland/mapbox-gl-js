@@ -8,7 +8,7 @@ let linkEl;
 let reducedMotionQuery: MediaQueryList;
 
 let stubTime;
-
+//window.devicePixelRatio = 2;
 /**
  * @private
  */
