@@ -216,34 +216,34 @@ test('Elevation', (t) => {
                 t.equal(map.painter.terrain.getAtPoint(coord), 0);
 
                 t.test('dx', t => {
-                    const elevationDx = map.painter.terrain.getAtPoint({x: coord.x + dx, y: coord.y});
+                    const elevationDx = map.painter.terrain.getAtPoint({x: coord.x + dx, y: coord.y}, 0);
                     t.assert(Math.abs(elevationDx - 0.1) < 1e-12);
                     t.end();
                 });
 
                 t.test('dy', t => {
-                    const elevationDy = map.painter.terrain.getAtPoint({x: coord.x, y: coord.y + dx});
+                    const elevationDy = map.painter.terrain.getAtPoint({x: coord.x, y: coord.y + dx}, 0);
                     const expectation = TILE_SIZE * 0.1;
                     t.assert(Math.abs(elevationDy - expectation) < 1e-12);
                     t.end();
                 });
 
                 t.test('dx/3 dy/3', t => {
-                    const elevation = map.painter.terrain.getAtPoint({x: coord.x + dx / 3, y: coord.y + dx / 3});
+                    const elevation = map.painter.terrain.getAtPoint({x: coord.x + dx / 3, y: coord.y + dx / 3}, 0);
                     const expectation = (2 * TILE_SIZE + 2) * 0.1 / 6;
                     t.assert(Math.abs(elevation - expectation) < 1e-9);
                     t.end();
                 });
 
                 t.test('-dx -wrap', t => {
-                    const elevation = map.painter.terrain.getAtPoint({x: coord.x - dx, y: coord.y});
+                    const elevation = map.painter.terrain.getAtPoint({x: coord.x - dx, y: coord.y}, 0);
                     const expectation = (TILE_SIZE - 1) * 0.1;
                     t.assert(Math.abs(elevation - expectation) < 1e-12);
                     t.end();
                 });
 
                 t.test('-1.5dx -wrap', t => {
-                    const elevation = map.painter.terrain.getAtPoint({x: coord.x - 1.5 * dx, y: coord.y});
+                    const elevation = map.painter.terrain.getAtPoint({x: coord.x - 1.5 * dx, y: coord.y}, 0);
                     const expectation = (TILE_SIZE - 1.5) * 0.1;
                     t.assert(Math.abs(elevation - expectation) < 1e-12);
                     t.end();
@@ -1273,18 +1273,17 @@ test('Marker interaction and raycast', (t) => {
             });
 
             t.test('Occluded', (t) => {
-                marker._occlusionTimer = null;
+                marker._fadeTimer = null;
                 marker.setLngLat(terrainTopLngLat);
                 const bottomLngLat = tr.pointLocation3D(new Point(terrainTop.x, tr.height));
                 // Raycast returns distance to closer point evaluates to occluded marker.
                 t.stub(tr, 'pointLocation3D').returns(bottomLngLat);
                 setTimeout(() => {
-                    t.ok(marker.getElement().classList.contains('mapboxgl-marker-occluded'));
+                    t.deepEqual(marker.getElement().style.opacity, 0.2);
                     t.end();
                 }, 100);
             });
 
-            map.remove();
             t.end();
         });
     });

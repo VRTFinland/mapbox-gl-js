@@ -153,15 +153,15 @@ class ProxySourceCache extends SourceCache {
 class ProxiedTileID extends OverscaledTileID {
     proxyTileKey: number;
 
-    constructor(tileID: OverscaledTileID, proxyTileKey: number, posMatrix: Float32Array) {
+    constructor(tileID: OverscaledTileID, proxyTileKey: number, projMatrix: Float32Array) {
         super(tileID.overscaledZ, tileID.wrap, tileID.canonical.z, tileID.canonical.x, tileID.canonical.y);
         this.proxyTileKey = proxyTileKey;
-        this.posMatrix = posMatrix;
+        this.projMatrix = projMatrix;
     }
 }
 
 type OverlapStencilType = false | 'Clip' | 'Mask';
-type FBO = {fb: Framebuffer, tex: Texture, dirty: boolean, ref: number};
+type FBO = {fb: Framebuffer, tex: Texture, dirty: boolean};
 
 export class Terrain extends Elevation {
     terrainTileForTile: {[number | string]: Tile};
@@ -190,6 +190,7 @@ export class Terrain extends Elevation {
     _sourceTilesOverlap: {[string]: boolean};
     _overlapStencilMode: StencilMode;
     _overlapStencilType: OverlapStencilType;
+    _stencilRef: number;
 
     _exaggeration: number;
     _depthFBO: Framebuffer;
@@ -201,6 +202,7 @@ export class Terrain extends Elevation {
     currentFBO: FBO;
     renderedToTile: boolean;
     _drapedRenderBatches: Array<RenderBatch>;
+    _sharedDepthStencil: WebGLRenderbuffer;
 
     _findCoveringTileCache: {[string]: {[number]: ?number}};
 
@@ -333,6 +335,7 @@ export class Terrain extends Elevation {
     _disable() {
         if (!this.enabled) return;
         this.enabled = false;
+        this._sharedDepthStencil = undefined;
         this.proxySourceCache.deallocRenderCache();
         if (this._style) {
             for (const id in this._style._sourceCaches) {
@@ -379,7 +382,7 @@ export class Terrain extends Elevation {
     // For every renderable coordinate in every source cache, assign one proxy
     // tile (see _setupProxiedCoordsForOrtho). Mapping of source tile to proxy
     // tile is modeled by ProxiedTileID. In general case, source and proxy tile
-    // are of different zoom: ProxiedTileID.posMatrix models ortho, scale and
+    // are of different zoom: ProxiedTileID.projMatrix models ortho, scale and
     // translate from source to proxy. This matrix is used when rendering source
     // tile to proxy tile's texture.
     // One proxy tile can have multiple source tiles, or pieces of source tiles,
@@ -395,7 +398,7 @@ export class Terrain extends Elevation {
         const tr = this.painter.transform;
         if (this._initializing) {
             // Don't activate terrain until center tile gets loaded.
-            this._initializing = tr._centerAltitude === 0 && this.getAtPoint(MercatorCoordinate.fromLngLat(tr.center), -1) === -1;
+            this._initializing = tr._centerAltitude === 0 && this.getAtPointOrZero(MercatorCoordinate.fromLngLat(tr.center), -1) === -1;
             this._emptyDEMTextureDirty = !this._initializing;
         }
 
@@ -405,7 +408,7 @@ export class Terrain extends Elevation {
         this._invalidateRenderCache = false;
         const coords = this.proxyCoords = psc.getIds().map((id) => {
             const tileID = psc.getTileByID(id).tileID;
-            tileID.posMatrix = tr.calculatePosMatrix(tileID.toUnwrapped());
+            tileID.projMatrix = tr.calculateProjMatrix(tileID.toUnwrapped());
             return tileID;
         });
         sortByDistanceToCamera(coords, this.painter);
@@ -438,10 +441,10 @@ export class Terrain extends Elevation {
         this._assignTerrainTiles(coords);
         this._prepareDEMTextures();
         this._setupDrapedRenderBatches();
+        this._initFBOPool();
         this._setupRenderCache(previousProxyToSource);
 
         this.renderingToTexture = false;
-        this._initFBOPool();
         this._updateTimestamp = browser.now();
 
         // Gather all dem tiles that are assigned to proxy tiles
@@ -810,6 +813,16 @@ export class Terrain extends Elevation {
         tex.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
         const fb = context.createFramebuffer(bufferSize[0], bufferSize[1], false);
         fb.colorAttachment.set(tex.texture);
+        fb.depthAttachment = new DepthStencilAttachment(context, fb.framebuffer);
+
+        if (this._sharedDepthStencil === undefined) {
+            this._sharedDepthStencil = context.createRenderbuffer(context.gl.DEPTH_STENCIL, bufferSize[0], bufferSize[1]);
+            this._stencilRef = 0;
+            fb.depthAttachment.set(this._sharedDepthStencil);
+            context.clear({stencil: 0});
+        } else {
+            fb.depthAttachment.set(this._sharedDepthStencil);
+        }
 
         if (context.extTextureFilterAnisotropic && !context.extTextureFilterAnisotropicForceOff) {
             gl.texParameterf(gl.TEXTURE_2D,
@@ -817,7 +830,7 @@ export class Terrain extends Elevation {
                 context.extTextureFilterAnisotropicMax);
         }
 
-        return {fb, tex, dirty: false, ref: 1};
+        return {fb, tex, dirty: false};
     }
 
     _initFBOPool() {
@@ -1031,18 +1044,12 @@ export class Terrain extends Elevation {
             this._overlapStencilType = false;
             return;
         }
-        if (!fb.depthAttachment) {
-            const renderbuffer = context.createRenderbuffer(context.gl.DEPTH_STENCIL, fb.width, fb.height);
-            fb.depthAttachment = new DepthStencilAttachment(context, fb.framebuffer);
-            fb.depthAttachment.set(renderbuffer);
+        if (this._stencilRef + stencilRange > 255) {
             context.clear({stencil: 0});
+            this._stencilRef = 0;
         }
-        if (fbo.ref + stencilRange > 255) {
-            context.clear({stencil: 0});
-            fbo.ref = 0;
-        }
-        fbo.ref += stencilRange;
-        this._overlapStencilMode.ref = fbo.ref;
+        this._stencilRef += stencilRange;
+        this._overlapStencilMode.ref = this._stencilRef;
         if (layer.isTileClipped()) {
             this._renderTileClippingMasks(proxiedCoords, this._overlapStencilMode.ref);
         }
@@ -1081,7 +1088,7 @@ export class Terrain extends Elevation {
             program.draw(context, gl.TRIANGLES, DepthMode.disabled,
                 // Tests will always pass, and ref value will be written to stencil buffer.
                 new StencilMode({func: gl.ALWAYS, mask: 0}, id, 0xFF, gl.KEEP, gl.KEEP, gl.REPLACE),
-                ColorMode.disabled, CullFaceMode.disabled, clippingMaskUniformValues(tileID.posMatrix),
+                ColorMode.disabled, CullFaceMode.disabled, clippingMaskUniformValues(tileID.projMatrix),
                 '$clipping', painter.tileExtentBuffer,
                 painter.quadTriangleIndexBuffer, painter.tileExtentSegments);
         }
@@ -1108,7 +1115,9 @@ export class Terrain extends Elevation {
         const p = [camera[0], camera[1], camera[2] / mercatorZScale, 0.0];
         const dir = vec3.subtract([], far.slice(0, 3), p);
         vec3.normalize(dir, dir);
-        const distanceAlongRay = this.raycast(p, dir, this._exaggeration);
+
+        const exaggeration = this._exaggeration;
+        const distanceAlongRay = this.raycast(p, dir, exaggeration);
 
         if (distanceAlongRay === null || !distanceAlongRay) return null;
         vec3.scaleAndAdd(p, p, dir, distanceAlongRay);

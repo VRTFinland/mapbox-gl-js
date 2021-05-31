@@ -1,10 +1,18 @@
+## 13.20.0
+
+### ✨ Features and improvements
+
+* Add configurable fog as a root style specification ([#10564](https://github.com/mapbox/mapbox-gl-js/pull/10564))
+* Add support for data-driven expressions in `line-dasharray` and `line-cap` properties. ([#10591](https://github.com/mapbox/mapbox-gl-js/pull/10591))
+* Add support for data-driven `text-line-height` ([#10612](https://github.com/mapbox/mapbox-gl-js/pull/10612))
+
 ## 13.19.0
 
 ### ✨ Features and improvements
 
 * Added array support to minimums and maximums, allowing for validation of multi-dimensional style-spec value constraints. ([#10272](https://github.com/mapbox/mapbox-gl-js/pull/10272))
 
-# 13.18.1
+## 13.18.1
 
 ### 🐞 Bug fixes
 * Fixed a bug where `map.setStyle` couldn't be used to enable terrain. ([#10177](https://github.com/mapbox/mapbox-gl-js/pull/10177))

@@ -16,6 +16,7 @@ import Hash from './hash.js';
 import HandlerManager from './handler_manager.js';
 import Camera from './camera.js';
 import LngLat from '../geo/lng_lat.js';
+import MercatorCoordinate from '../geo/mercator_coordinate.js';
 import LngLatBounds from '../geo/lng_lat_bounds.js';
 import Point from '@mapbox/point-geometry';
 import AttributionControl from './control/attribution_control.js';
@@ -27,6 +28,8 @@ import {MapMouseEvent} from './events.js';
 import TaskQueue from '../util/task_queue.js';
 import webpSupported from '../util/webp_supported.js';
 import {PerformanceMarkers, PerformanceUtils} from '../util/performance.js';
+import Marker from '../ui/marker.js';
+import EasedVariable from '../util/eased_variable.js';
 
 import {setCacheLimits} from '../util/tile_request_cache.js';
 
@@ -39,6 +42,7 @@ import type {MapEvent, MapDataEvent} from './events.js';
 import type {CustomLayerInterface} from '../style/style_layer/custom_style_layer.js';
 import type {StyleImageInterface, StyleImageMetadata} from '../style/style_image.js';
 import Terrain from '../style/terrain.js';
+import Fog from '../style/fog.js';
 
 import type ScrollZoomHandler from './handler/scroll_zoom.js';
 import type BoxZoomHandler from './handler/box_zoom.js';
@@ -57,8 +61,10 @@ import type {
     StyleSpecification,
     LightSpecification,
     TerrainSpecification,
+    FogSpecification,
     SourceSpecification
 } from '../style-spec/types.js';
+import type {ElevationQueryOptions} from '../terrain/elevation.js';
 
 type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 /* eslint-disable no-use-before-define */
@@ -69,6 +75,11 @@ type IControl = {
     +getDefaultPosition?: () => ControlPosition;
 }
 /* eslint-enable no-use-before-define */
+
+const AVERAGE_ELEVATION_SAMPLING_INTERVAL = 500; // ms
+const AVERAGE_ELEVATION_EASE_TIME = 300; // ms
+const AVERAGE_ELEVATION_EASE_THRESHOLD = 1; // meters
+const AVERAGE_ELEVATION_CHANGE_THRESHOLD = 1e-4; // meters
 
 type MapOptions = {
     hash?: boolean | string,
@@ -183,8 +194,8 @@ const defaultOptions = {
  * such JSON.
  *
  * To load a style from the Mapbox API, you can use a URL of the form `mapbox://styles/:owner/:style`,
- * where `:owner` is your Mapbox account name and `:style` is the style ID. Or you can use one of the following
- * [the predefined Mapbox styles](https://www.mapbox.com/maps/):
+ * where `:owner` is your Mapbox account name and `:style` is the style ID. Or you can use a
+ * [Mapbox-owned style](https://docs.mapbox.com/api/maps/styles/#mapbox-styles):
  *
  *  * `mapbox://styles/mapbox/streets-v11`
  *  * `mapbox://styles/mapbox/outdoors-v11`
@@ -192,10 +203,8 @@ const defaultOptions = {
  *  * `mapbox://styles/mapbox/dark-v10`
  *  * `mapbox://styles/mapbox/satellite-v9`
  *  * `mapbox://styles/mapbox/satellite-streets-v11`
- *  * `mapbox://styles/mapbox/navigation-preview-day-v4`
- *  * `mapbox://styles/mapbox/navigation-preview-night-v4`
- *  * `mapbox://styles/mapbox/navigation-guidance-day-v4`
- *  * `mapbox://styles/mapbox/navigation-guidance-night-v4`
+ *  * `mapbox://styles/mapbox/navigation-day-v1`
+ *  * `mapbox://styles/mapbox/navigation-night-v1`
  *
  * Tilesets hosted with Mapbox can be style-optimized if you append `?optimize=true` to the end of your style URL, like `mapbox://styles/mapbox/streets-v11?optimize=true`.
  * Learn more about style-optimized vector tiles in our [API documentation](https://www.mapbox.com/api-documentation/maps/#retrieve-tiles).
@@ -276,7 +285,6 @@ const defaultOptions = {
  *     }
  *   }
  * });
- * @see [Display a map](https://www.mapbox.com/mapbox-gl-js/examples/)
  */
 class Map extends Camera {
     style: Style;
@@ -323,7 +331,9 @@ class Map extends Camera {
     _collectResourceTiming: boolean;
     _optimizeForTerrain: boolean;
     _renderTaskQueue: TaskQueue;
+    _domRenderTaskQueue: TaskQueue;
     _controls: Array<IControl>;
+    _markers: Array<Marker>;
     _logoControl: IControl;
     _mapId: number;
     _localIdeographFontFamily: string;
@@ -334,6 +344,8 @@ class Map extends Camera {
     _speedIndexTiming: boolean;
     _clickTolerance: number;
     _silenceAuthErrors: boolean;
+    _averageElevationLastSampledAt: number;
+    _averageElevation: EasedVariable;
 
     /**
      * The map's {@link ScrollZoomHandler}, which implements zooming in and out with a scroll wheel or trackpad.
@@ -425,10 +437,15 @@ class Map extends Camera {
         this._collectResourceTiming = options.collectResourceTiming;
         this._optimizeForTerrain = options.optimizeForTerrain;
         this._renderTaskQueue = new TaskQueue();
+        this._domRenderTaskQueue = new TaskQueue();
         this._controls = [];
+        this._markers = [];
         this._mapId = uniqueId();
         this._locale = extend({}, defaultLocale, options.locale);
         this._clickTolerance = options.clickTolerance;
+
+        this._averageElevationLastSampledAt = -Infinity;
+        this._averageElevation = new EasedVariable(0);
 
         this._requestManager = new RequestManager(options.transformRequest, options.accessToken, options.testMode);
         this._silenceAuthErrors = !!options.testMode;
@@ -1828,7 +1845,7 @@ class Map extends Camera {
      * @param {Object | CustomLayerInterface} layer The layer to add, conforming to either the Mapbox Style Specification's [layer definition](https://docs.mapbox.com/mapbox-gl-js/style-spec/#layers) or, less commonly, the {@link CustomLayerInterface} specification.
      * The Mapbox Style Specification's layer definition is appropriate for most layers.
      *
-     * @param {string} layer.id A unique idenfier that you define.
+     * @param {string} layer.id A unique identifier that you define.
      * @param {string} layer.type The type of layer (for example `fill` or `symbol`).
      * A list of layer types is available in the [Mapbox Style Specification](https://docs.mapbox.com/mapbox-gl-js/style-spec/layers/#type).
      *
@@ -2164,6 +2181,7 @@ class Map extends Camera {
     setTerrain(terrain: TerrainSpecification) {
         this._lazyInitEmptyStyle();
         this.style.setTerrain(terrain);
+        this._averageElevationLastSampledAt = -Infinity;
         return this._update(true);
     }
 
@@ -2173,7 +2191,74 @@ class Map extends Camera {
      * @returns {Object} terrain Terrain specification properties of the style.
      */
     getTerrain(): Terrain | null {
-        return this.style.getTerrain();
+        return this.style ? this.style.getTerrain() : null;
+    }
+
+    /**
+     * Sets the fog property of the style.
+     * @param fog The fog properties to set. Must conform the [Mapbox Style Specification](https://docs.mapbox.com/mapbox-gl-js/style-spec/root/#fog).
+     * If `null` or `undefined` is provided, this function call removes the fog from the map.
+     * @returns {Map} `this`
+     * @example
+     * map.setFog({
+     *  "range": [1.0, 12.0],
+     *  "color": 'white',
+     *  "horizon-blend": 0.1
+     * });
+     */
+    setFog(fog: FogSpecification) {
+        this._lazyInitEmptyStyle();
+        this.style.setFog(fog);
+        return this._update(true);
+    }
+
+    /**
+     * Returns the fog specification or `null` if fog is not set on the map.
+     *
+     * @returns {Object} fog Fog specification properties of the style.
+     */
+    getFog(): Fog | null {
+        return this.style ? this.style.getFog() : null;
+    }
+
+    /**
+     * Returns the fog opacity for a given location.
+     *
+     * An opacity of 0 means that there is no fog contribution for the given location
+     * while a fog opacity of 1.0 means the location is fully obscured by the fog effect.
+     *
+     * If there is no fog set on the map, this function will return 0.
+     *
+     * @param {LngLatLike} lnglat The geographical location to evaluate the fog on.
+     * @returns {number} A value between 0 and 1 representing the fog opacity, where 1 means fully within, and 0 means not affected by the fog effect.
+     * @private
+     */
+    _queryFogOpacity(lnglat: LngLatLike): number {
+        if (!this.style || !this.style.fog) return 0.0;
+        return this.style.fog.getOpacityAtLatLng(LngLat.convert(lnglat), this.transform);
+    }
+
+    /**
+     * Queries the currently loaded data for elevation at a geographical location. The elevation is returned in `meters` relative to mean sea-level.
+     * Returns `null` if `terrain` is disabled or if terrain data for the location hasn't been loaded yet.
+     *
+     * In order to guarantee that the terrain data is loaded ensure that the geographical location is visible and wait for the `idle` event to occur.
+     * @param {LngLatLike} lnglat The geographical location at which to query.
+     * @param {ElevationQueryOptions} [options] options Object
+     * @param {boolean} [options.exaggerated=true] When `true` returns the terrain elevation with the value of `exaggeration` from the style already applied.
+     * When `false`, returns the raw value of the underlying data without styling applied.
+     * @returns {number | null} The elevation in meters
+     * @example
+     * var coordinate = [-122.420679, 37.772537];
+     * var elevation = map.queryTerrainElevation(coordinate);
+     */
+    queryTerrainElevation(lnglat: LngLatLike, options: ElevationQueryOptions): number | null {
+        const elevation = this.transform.elevation;
+        if (elevation) {
+            options = extend({}, {exaggerated: true}, options);
+            return elevation.getAtPoint(MercatorCoordinate.fromLngLat(lnglat), null, options.exaggerated);
+        }
+        return null;
     }
 
     /**
@@ -2409,6 +2494,17 @@ class Map extends Camera {
         this._canvas.style.height = `${height}px`;
     }
 
+    _addMarker(marker: Marker) {
+        this._markers.push(marker);
+    }
+
+    _removeMarker(marker: Marker) {
+        const index = this._markers.indexOf(marker);
+        if (index !== -1) {
+            this._markers.splice(index, 1);
+        }
+    }
+
     _setupPainter() {
         const attributes = extend({}, supported.webGLContextAttributes, {
             failIfMajorPerformanceCaveat: this._failIfMajorPerformanceCaveat,
@@ -2508,6 +2604,21 @@ class Map extends Camera {
     }
 
     /**
+     * Request that the given callback be executed during the next render frame if the map is not
+     * idle. Otherwise it is executed immediately, to avoid triggering a new render.
+     * @private
+     */
+    _requestDomTask(callback: () => void) {
+        // This condition means that the map is idle: the callback needs to be called right now as
+        // there won't be a triggered render to run the queue.
+        if (!this.isMoving() && this.loaded()) {
+            callback();
+        } else {
+            this._domRenderTaskQueue.add(callback);
+        }
+    }
+
+    /**
      * Call when a (re-)render of the map is required:
      * - The style has changed (`setPaintProperty()`, etc.)
      * - Source data has changed (e.g. tiles have finished loading)
@@ -2520,21 +2631,24 @@ class Map extends Camera {
      * @private
      */
     _render(paintStartTimeStamp: number) {
-        let gpuTimer, frameStartTime = 0;
+        let gpuTimer;
         const extTimerQuery = this.painter.context.extTimerQuery;
+        const frameStartTime = browser.now();
         if (this.listens('gpu-timing-frame')) {
             gpuTimer = extTimerQuery.createQueryEXT();
             extTimerQuery.beginQueryEXT(extTimerQuery.TIME_ELAPSED_EXT, gpuTimer);
-            frameStartTime = browser.now();
         }
 
         const m = PerformanceUtils.beginMeasure('render');
+
+        let averageElevationChanged = this._updateAverageElevation(frameStartTime);
 
         // A custom layer may have used the context asynchronously. Mark the state as dirty.
         this.painter.context.setDirty();
         this.painter.setBaseState();
 
         this._renderTaskQueue.run(paintStartTimeStamp);
+        this._domRenderTaskQueue.run(paintStartTimeStamp);
         // A task queue callback may have fired a user event which may have removed the map
         if (this._removed) return;
 
@@ -2567,11 +2681,19 @@ class Map extends Camera {
             this.style.update(parameters);
         }
 
+        const fogIsTransitioning = this.style && this.style.fog && this.style.fog.hasTransition();
+
+        if (fogIsTransitioning) {
+            this.style._markersNeedUpdate = true;
+            this._sourcesDirty = true;
+        }
+
         // If we are in _render for any reason other than an in-progress paint
         // transition, update source caches to check for and load any tiles we
         // need for the current transform
         if (this.style && this._sourcesDirty) {
             this._sourcesDirty = false;
+            this.painter._updateFog(this.style);
             this._updateTerrain(); // Terrain DEM source updates here and skips update in style._updateSources.
             this.style._updateSources(this.transform);
         }
@@ -2647,19 +2769,30 @@ class Map extends Camera {
         // Even though `_styleDirty` and `_sourcesDirty` are reset in this
         // method, synchronous events fired during Style#update or
         // Style#_updateSources could have caused them to be set again.
-        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty;
+        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty || averageElevationChanged;
         if (somethingDirty || this._repaint) {
             this.triggerRepaint();
         } else {
-            this._triggerFrame(false);
-            if (!this.isMoving() && this.loaded()) {
-                this.fire(new Event('idle'));
-                this._isInitialLoad = false;
-                // check the options to see if need to calculate the speed index
-                if (this.speedIndexTiming) {
-                    const speedIndexNumber = this._calculateSpeedIndex();
-                    this.fire(new Event('speedindexcompleted', {speedIndex: speedIndexNumber}));
-                    this.speedIndexTiming = false;
+            const willIdle = !this.isMoving() && this.loaded();
+            if (willIdle) {
+                // Before idling, we perform one last sample so that if the average elevation
+                // does not exactly match the terrain, we skip idle and ease it to its final state.
+                averageElevationChanged = this._updateAverageElevation(frameStartTime, true);
+            }
+
+            if (averageElevationChanged) {
+                this.triggerRepaint();
+            } else {
+                this._triggerFrame(false);
+                if (willIdle) {
+                    this.fire(new Event('idle'));
+                    this._isInitialLoad = false;
+                    // check the options to see if need to calculate the speed index
+                    if (this.speedIndexTiming) {
+                        const speedIndexNumber = this._calculateSpeedIndex();
+                        this.fire(new Event('speedindexcompleted', {speedIndex: speedIndexNumber}));
+                        this.speedIndexTiming = false;
+                    }
                 }
             }
         }
@@ -2672,6 +2805,54 @@ class Map extends Camera {
         }
 
         return this;
+    }
+
+    /**
+     * Update the average visible elevation by sampling terrain
+     *
+     * @returns {boolean} true if elevation has changed from the last sampling
+     * @private
+     */
+    _updateAverageElevation(timeStamp: number, ignoreTimeout: boolean = false): boolean {
+        const applyUpdate = value => {
+            this.transform.averageElevation = value;
+            this._update(false);
+            return true;
+        };
+
+        if (!this.painter.averageElevationNeedsEasing()) {
+            if (this.transform.averageElevation !== 0) return applyUpdate(0);
+            return false;
+        }
+
+        const timeoutElapsed = ignoreTimeout || timeStamp - this._averageElevationLastSampledAt > AVERAGE_ELEVATION_SAMPLING_INTERVAL;
+
+        if (timeoutElapsed && !this._averageElevation.isEasing(timeStamp)) {
+            const currentElevation = this.transform.averageElevation;
+            let newElevation = this.transform.sampleAverageElevation();
+
+            // New elevation is NaN if no terrain tiles were available
+            if (isNaN(newElevation)) {
+                newElevation = 0;
+            } else {
+                // Don't activate the timeout if no data was available
+                this._averageElevationLastSampledAt = timeStamp;
+            }
+            const elevationChange = Math.abs(currentElevation - newElevation);
+
+            if (elevationChange > AVERAGE_ELEVATION_EASE_THRESHOLD) {
+                this._averageElevation.easeTo(newElevation, timeStamp, AVERAGE_ELEVATION_EASE_TIME);
+            } else if (elevationChange > AVERAGE_ELEVATION_CHANGE_THRESHOLD) {
+                this._averageElevation.jumpTo(newElevation);
+                return applyUpdate(newElevation);
+            }
+        }
+
+        if (this._averageElevation.isEasing(timeStamp)) {
+            return applyUpdate(this._averageElevation.getValue(timeStamp));
+        }
+
+        return false;
     }
 
     /***** START WARNING - REMOVAL OR MODIFICATION OF THE
@@ -2779,6 +2960,7 @@ class Map extends Camera {
             this._frame = null;
         }
         this._renderTaskQueue.clear();
+        this._domRenderTaskQueue.clear();
         this.painter.destroy();
         this.handlers.destroy();
         delete this.handlers;

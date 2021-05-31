@@ -3,11 +3,10 @@
   "metadata": {
     "test": {
       "width": 64,
-      "height": 64,
-      "allowed": 0.00075
+      "height": 64
     }
   },
-  "pitch": 60,
+  "pitch": 70,
   "sources": {
     "geojson": {
       "type": "geojson",
@@ -16,24 +15,24 @@
         "coordinates": [
           [
             [
-              -13,
-              -13
+              -10,
+              -30
             ],
             [
               -10,
-              7
+              30
             ],
             [
               10,
-              10
+              30
             ],
             [
-              7,
-              -10
+              10,
+              -30
             ],
             [
-              -13,
-              -13
+              -10,
+              -30
             ]
           ]
         ]
@@ -46,9 +45,13 @@
       "type": "fill",
       "source": "geojson",
       "paint": {
-        "fill-color": "#CCC",
-        "fill-outline-color": "#000"
+        "fill-antialias": false,
+        "fill-color": "#334455"
       }
     }
-  ]
+  ],
+  "fog": {
+    "range": [-0.5, 0.5],
+    "color": "white"
+  }
 }

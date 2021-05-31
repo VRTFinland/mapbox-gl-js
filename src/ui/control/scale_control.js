@@ -103,25 +103,27 @@ function updateScale(map, container, options) {
         const maxFeet = 3.2808 * maxMeters;
         if (maxFeet > 5280) {
             const maxMiles = maxFeet / 5280;
-            setScale(container, maxWidth, maxMiles, map._getUIString('ScaleControl.Miles'));
+            setScale(container, maxWidth, maxMiles, map._getUIString('ScaleControl.Miles'), map);
         } else {
-            setScale(container, maxWidth, maxFeet, map._getUIString('ScaleControl.Feet'));
+            setScale(container, maxWidth, maxFeet, map._getUIString('ScaleControl.Feet'), map);
         }
     } else if (options && options.unit === 'nautical') {
         const maxNauticals = maxMeters / 1852;
-        setScale(container, maxWidth, maxNauticals, map._getUIString('ScaleControl.NauticalMiles'));
+        setScale(container, maxWidth, maxNauticals, map._getUIString('ScaleControl.NauticalMiles'), map);
     } else if (maxMeters >= 1000) {
-        setScale(container, maxWidth, maxMeters / 1000, map._getUIString('ScaleControl.Kilometers'));
+        setScale(container, maxWidth, maxMeters / 1000, map._getUIString('ScaleControl.Kilometers'), map);
     } else {
-        setScale(container, maxWidth, maxMeters, map._getUIString('ScaleControl.Meters'));
+        setScale(container, maxWidth, maxMeters, map._getUIString('ScaleControl.Meters'), map);
     }
 }
 
-function setScale(container, maxWidth, maxDistance, unit) {
+function setScale(container, maxWidth, maxDistance, unit, map) {
     const distance = getRoundNum(maxDistance);
     const ratio = distance / maxDistance;
-    container.style.width = `${maxWidth * ratio}px`;
-    container.innerHTML = `${distance}&nbsp;${unit}`;
+    map._requestDomTask(() => {
+        container.style.width = `${maxWidth * ratio}px`;
+        container.innerHTML = `${distance}&nbsp;${unit}`;
+    });
 }
 
 function getDecimalRoundNum(d) {

@@ -572,8 +572,12 @@ export default class Popup extends Evented {
         }
 
         const offsetedPos = pos.add(offset[anchor]).round();
-        DOM.setTransform(this._container, `${anchorTranslate[anchor]} translate(${offsetedPos.x}px,${offsetedPos.y}px)`);
-        applyAnchorClass(this._container, anchor, 'popup');
+        this._map._requestDomTask(() => {
+            if (this._container && anchor) {
+                DOM.setTransform(this._container, `${anchorTranslate[anchor]} translate(${offsetedPos.x}px,${offsetedPos.y}px)`);
+                applyAnchorClass(this._container, anchor, 'popup');
+            }
+        });
     }
 
     _focusFirstElement() {
@@ -586,6 +590,11 @@ export default class Popup extends Evented {
 
     _onClose() {
         this.remove();
+    }
+
+    _setOpacity(opacity: string) {
+        if (this._content) this._content.style.opacity = opacity;
+        if (this._tip)  this._tip.style.opacity = opacity;
     }
 }
 

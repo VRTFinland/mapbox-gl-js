@@ -1,5 +1,6 @@
 // Also declared in data/bucket/fill_extrusion_bucket.js
-#define ELEVATION_SCALE 7.3
+#define ELEVATION_SCALE 7.0
+#define ELEVATION_OFFSET 450.0
 
 #ifdef TERRAIN
 
@@ -36,6 +37,9 @@ float currentElevation(vec2 apos) {
     vec2 f = r.zw;
 
     float tl = decodeElevation(texture2D(u_dem, pos));
+#ifdef TERRAIN_DEM_NEAREST_FILTER
+    return u_exaggeration * tl;
+#endif
     float tr = decodeElevation(texture2D(u_dem, pos + vec2(dd, 0.0)));
     float bl = decodeElevation(texture2D(u_dem, pos + vec2(0.0, dd)));
     float br = decodeElevation(texture2D(u_dem, pos + vec2(dd, dd)));
@@ -144,7 +148,7 @@ float flatElevation(vec2 pack) {
 }
 
 float elevationFromUint16(float word) {
-    return u_exaggeration * word / ELEVATION_SCALE;
+    return u_exaggeration * (word / ELEVATION_SCALE - ELEVATION_OFFSET);
 }
 
 // END: code for fill-extrusion height offseting
