@@ -30,7 +30,7 @@ if (!shared) {
 
 define(['exports'], function (exports) { 'use strict';
 
-var version = "2.3.0-dev";
+var version = "2.3.0";
 
 var unitbezier = UnitBezier;
 function UnitBezier(p1x, p1y, p2x, p2y) {
@@ -246,6 +246,29 @@ function degToRad(a) {
 function radToDeg(a) {
     return a * RAD_TO_DEG;
 }
+const TILE_CORNERS = [
+    [
+        0,
+        0
+    ],
+    [
+        1,
+        0
+    ],
+    [
+        1,
+        1
+    ],
+    [
+        0,
+        1
+    ]
+];
+function furthestTileCorner(bearing) {
+    const alignedBearing = (bearing + 45 + 360) % 360;
+    const cornerIdx = Math.round(alignedBearing / 90) % 4;
+    return TILE_CORNERS[cornerIdx];
+}
 function easeCubicInOut(t) {
     if (t <= 0)
         return 0;
@@ -269,6 +292,17 @@ function getBounds(points) {
         min: new pointGeometry(minX, minY),
         max: new pointGeometry(maxX, maxY)
     };
+}
+function getAABBPointSquareDist(min, max, point) {
+    let sqDist = 0;
+    for (let i = 0; i < 2; ++i) {
+        const v = point ? point[i] : 0;
+        if (min[i] > v)
+            sqDist += (min[i] - v) * (min[i] - v);
+        if (max[i] < v)
+            sqDist += (v - max[i]) * (v - max[i]);
+    }
+    return sqDist;
 }
 function polygonizeBounds(min, max, buffer = 0, close = true) {
     const offset = new pointGeometry(buffer, buffer);
@@ -310,6 +344,10 @@ function bezier(p1x, p1y, p2x, p2y) {
 const ease = bezier(0.25, 0.1, 0.25, 1);
 function clamp(n, min, max) {
     return Math.min(max, Math.max(min, n));
+}
+function smoothstep(e0, e1, x) {
+    x = clamp((x - e0) / (e1 - e0), 0, 1);
+    return x * x * (3 - 2 * x);
 }
 function wrap(n, min, max) {
     const d = max - min;
@@ -1583,6 +1621,9 @@ var $root = {
 	terrain: {
 		type: "terrain"
 	},
+	fog: {
+		type: "fog"
+	},
 	sources: {
 		required: true,
 		type: "sources"
@@ -2081,10 +2122,11 @@ var layout_line = {
 		expression: {
 			interpolated: false,
 			parameters: [
-				"zoom"
+				"zoom",
+				"feature"
 			]
 		},
-		"property-type": "data-constant"
+		"property-type": "data-driven"
 	},
 	"line-join": {
 		type: "enum",
@@ -2642,10 +2684,11 @@ var layout_symbol = {
 		expression: {
 			interpolated: true,
 			parameters: [
-				"zoom"
+				"zoom",
+				"feature"
 			]
 		},
-		"property-type": "data-constant"
+		"property-type": "data-driven"
 	},
 	"text-letter-spacing": {
 		type: "number",
@@ -3074,6 +3117,53 @@ var expression = {
 	value: "*",
 	minimum: 1
 };
+var fog = {
+	range: {
+		type: "array",
+		"default": [
+			0.5,
+			10
+		],
+		minimum: -20,
+		maximum: 20,
+		length: 2,
+		value: "number",
+		"property-type": "data-constant",
+		transition: true,
+		expression: {
+			interpolated: true,
+			parameters: [
+				"zoom"
+			]
+		}
+	},
+	color: {
+		type: "color",
+		"property-type": "data-constant",
+		"default": "#ffffff",
+		expression: {
+			interpolated: true,
+			parameters: [
+				"zoom"
+			]
+		},
+		transition: true
+	},
+	"horizon-blend": {
+		type: "number",
+		"property-type": "data-constant",
+		"default": 0.1,
+		minimum: 0,
+		maximum: 1,
+		expression: {
+			interpolated: true,
+			parameters: [
+				"zoom"
+			]
+		},
+		transition: true
+	}
+};
 var light = {
 	anchor: {
 		type: "enum",
@@ -3440,10 +3530,11 @@ var paint_line = {
 		expression: {
 			interpolated: false,
 			parameters: [
-				"zoom"
+				"zoom",
+				"feature"
 			]
 		},
-		"property-type": "cross-faded"
+		"property-type": "cross-faded-data-driven"
 	},
 	"line-pattern": {
 		type: "resolvedImage",
@@ -4549,6 +4640,7 @@ var spec = {
 },
 	function_stop: function_stop,
 	expression: expression,
+	fog: fog,
 	light: light,
 	terrain: terrain,
 	paint: paint$a,
@@ -10495,6 +10587,47 @@ function validateTerrain(options) {
     return errors;
 }
 
+function validateFog$1(options) {
+    const fog = options.value;
+    const style = options.style;
+    const styleSpec = options.styleSpec;
+    const fogSpec = styleSpec.fog;
+    let errors = [];
+    const rootType = getType(fog);
+    if (fog === undefined) {
+        return errors;
+    } else if (rootType !== 'object') {
+        errors = errors.concat([new ValidationError('fog', fog, `object expected, ${ rootType } found`)]);
+        return errors;
+    }
+    if (fog.range && !isExpression(deepUnbundle(fog.range)) && fog.range[0] >= fog.range[1]) {
+        errors = errors.concat([new ValidationError('fog', fog, 'fog.range[0] can\'t be greater than or equal to fog.range[1]')]);
+    }
+    for (const key in fog) {
+        const transitionMatch = key.match(/^(.*)-transition$/);
+        if (transitionMatch && fogSpec[transitionMatch[1]] && fogSpec[transitionMatch[1]].transition) {
+            errors = errors.concat(validate({
+                key,
+                value: fog[key],
+                valueSpec: styleSpec.transition,
+                style,
+                styleSpec
+            }));
+        } else if (fogSpec[key]) {
+            errors = errors.concat(validate({
+                key,
+                value: fog[key],
+                valueSpec: fogSpec[key],
+                style,
+                styleSpec
+            }));
+        } else {
+            errors = errors.concat([new ValidationError(key, fog[key], `unknown property "${ key }"`)]);
+        }
+    }
+    return errors;
+}
+
 function validateFormatted(options) {
     if (validateString(options).length === 0) {
         return [];
@@ -10526,6 +10659,7 @@ const VALIDATORS = {
     'source': validateSource,
     'light': validateLight$1,
     'terrain': validateTerrain,
+    'fog': validateFog$1,
     'string': validateString,
     'formatted': validateFormatted,
     'resolvedImage': validateImage
@@ -10589,6 +10723,7 @@ function validateStyleMin(style, styleSpec = spec) {
 validateStyleMin.source = wrapCleanErrors(validateSource);
 validateStyleMin.light = wrapCleanErrors(validateLight$1);
 validateStyleMin.terrain = wrapCleanErrors(validateTerrain);
+validateStyleMin.fog = wrapCleanErrors(validateFog$1);
 validateStyleMin.layer = wrapCleanErrors(validateLayer);
 validateStyleMin.filter = wrapCleanErrors(validateFilter);
 validateStyleMin.paintProperty = wrapCleanErrors(validatePaintProperty$1);
@@ -10606,6 +10741,7 @@ function wrapCleanErrors(inner) {
 
 const validateStyle = validateStyleMin;
 const validateLight = validateStyle.light;
+const validateFog = validateStyle.fog;
 const validatePaintProperty = validateStyle.paintProperty;
 const validateLayoutProperty = validateStyle.layoutProperty;
 function emitValidationErrors(emitter, errors) {
@@ -11422,10 +11558,13 @@ class Transitionable {
 }
 class TransitioningPropertyValue {
     constructor(property, value, prior, transition, now) {
+        const delay = transition.delay || 0;
+        const duration = transition.duration || 0;
+        now = now || 0;
         this.property = property;
         this.value = value;
-        this.begin = now + transition.delay || 0;
-        this.end = this.begin + transition.duration || 0;
+        this.begin = now + delay;
+        this.end = this.begin + duration;
         if (property.specification.transition && (transition.delay || transition.duration)) {
             this.prior = prior;
         }
@@ -11628,10 +11767,12 @@ class CrossFadedDataDrivenProperty extends DataDrivenProperty {
         const z = parameters.zoom;
         return z > parameters.zoomHistory.lastIntegerZoom ? {
             from: min,
-            to: mid
+            to: mid,
+            other: max
         } : {
             from: max,
-            to: mid
+            to: mid,
+            other: min
         };
     }
     interpolate(a) {
@@ -11925,6 +12066,31 @@ class StructArrayLayout10ui20 extends StructArray {
 }
 StructArrayLayout10ui20.prototype.bytesPerElement = 20;
 register('StructArrayLayout10ui20', StructArrayLayout10ui20);
+class StructArrayLayout8ui16 extends StructArray {
+    _refreshViews() {
+        this.uint8 = new Uint8Array(this.arrayBuffer);
+        this.uint16 = new Uint16Array(this.arrayBuffer);
+    }
+    emplaceBack(v0, v1, v2, v3, v4, v5, v6, v7) {
+        const i = this.length;
+        this.resize(i + 1);
+        return this.emplace(i, v0, v1, v2, v3, v4, v5, v6, v7);
+    }
+    emplace(i, v0, v1, v2, v3, v4, v5, v6, v7) {
+        const o2 = i * 8;
+        this.uint16[o2 + 0] = v0;
+        this.uint16[o2 + 1] = v1;
+        this.uint16[o2 + 2] = v2;
+        this.uint16[o2 + 3] = v3;
+        this.uint16[o2 + 4] = v4;
+        this.uint16[o2 + 5] = v5;
+        this.uint16[o2 + 6] = v6;
+        this.uint16[o2 + 7] = v7;
+        return i;
+    }
+}
+StructArrayLayout8ui16.prototype.bytesPerElement = 16;
+register('StructArrayLayout8ui16', StructArrayLayout8ui16);
 class StructArrayLayout4i4ui4i24 extends StructArray {
     _refreshViews() {
         this.uint8 = new Uint8Array(this.arrayBuffer);
@@ -12605,6 +12771,19 @@ const patternAttributes = createLayout([
     }
 ]);
 
+const dashAttributes = createLayout([
+    {
+        name: 'a_dash_to',
+        components: 4,
+        type: 'Uint16'
+    },
+    {
+        name: 'a_dash_from',
+        components: 4,
+        type: 'Uint16'
+    }
+]);
+
 var murmurhash3_gc = createCommonjsModule(function (module) {
 function murmurhash3_32_gc(key, seed) {
     var remainder, bytes, h1, h1b, c1, c2, k1, i;
@@ -12944,16 +13123,16 @@ class CrossFadedConstantBinder {
     setConstantPatternPositions(posTo, posFrom) {
         this.pixelRatioFrom = posFrom.pixelRatio;
         this.pixelRatioTo = posTo.pixelRatio;
-        this.patternFrom = posFrom.tlbr;
-        this.patternTo = posTo.tlbr;
+        this.patternFrom = posFrom.tl.concat(posFrom.br);
+        this.patternTo = posTo.tl.concat(posTo.br);
     }
     setUniform(uniform, globals, currentValue, uniformName) {
-        const pos = uniformName === 'u_pattern_to' ? this.patternTo : uniformName === 'u_pattern_from' ? this.patternFrom : uniformName === 'u_pixel_ratio_to' ? this.pixelRatioTo : uniformName === 'u_pixel_ratio_from' ? this.pixelRatioFrom : null;
+        const pos = uniformName === 'u_pattern_to' || uniformName === 'u_dash_to' ? this.patternTo : uniformName === 'u_pattern_from' || uniformName === 'u_dash_from' ? this.patternFrom : uniformName === 'u_pixel_ratio_to' ? this.pixelRatioTo : uniformName === 'u_pixel_ratio_from' ? this.pixelRatioFrom : null;
         if (pos)
             uniform.set(pos);
     }
     getBinding(context, location, name) {
-        return name.substr(0, 9) === 'u_pattern' ? new Uniform4f(context, location) : new Uniform1f(context, location);
+        return name === 'u_pattern_from' || name === 'u_pattern_to' || name === 'u_dash_from' || name === 'u_dash_to' ? new Uniform4f(context, location) : new Uniform1f(context, location);
     }
 }
 class SourceExpressionBinder {
@@ -13079,6 +13258,7 @@ class CrossFadedCompositeBinder {
         this.useIntegerZoom = useIntegerZoom;
         this.zoom = zoom;
         this.layerId = layerId;
+        this.paintVertexAttributes = (type === 'array' ? dashAttributes : patternAttributes).members;
         for (let i = 0; i < names.length; ++i) {
         }
         this.zoomInPaintVertexArray = new PaintVertexArray();
@@ -13103,14 +13283,17 @@ class CrossFadedCompositeBinder {
         if (!imageMin || !imageMid || !imageMax)
             return;
         for (let i = start; i < end; i++) {
-            this.zoomInPaintVertexArray.emplace(i, imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1], imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1], imageMid.pixelRatio, imageMin.pixelRatio);
-            this.zoomOutPaintVertexArray.emplace(i, imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1], imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1], imageMid.pixelRatio, imageMax.pixelRatio);
+            this._setPaintValue(this.zoomInPaintVertexArray, i, imageMid, imageMin);
+            this._setPaintValue(this.zoomOutPaintVertexArray, i, imageMid, imageMax);
         }
+    }
+    _setPaintValue(array, i, posA, posB) {
+        array.emplace(i, posA.tl[0], posA.tl[1], posA.br[0], posA.br[1], posB.tl[0], posB.tl[1], posB.br[0], posB.br[1], posA.pixelRatio, posB.pixelRatio);
     }
     upload(context) {
         if (this.zoomInPaintVertexArray && this.zoomInPaintVertexArray.arrayBuffer && this.zoomOutPaintVertexArray && this.zoomOutPaintVertexArray.arrayBuffer) {
-            this.zoomInPaintVertexBuffer = context.createVertexBuffer(this.zoomInPaintVertexArray, patternAttributes.members, this.expression.isStateDependent);
-            this.zoomOutPaintVertexBuffer = context.createVertexBuffer(this.zoomOutPaintVertexArray, patternAttributes.members, this.expression.isStateDependent);
+            this.zoomInPaintVertexBuffer = context.createVertexBuffer(this.zoomInPaintVertexArray, this.paintVertexAttributes, this.expression.isStateDependent);
+            this.zoomOutPaintVertexBuffer = context.createVertexBuffer(this.zoomOutPaintVertexArray, this.paintVertexAttributes, this.expression.isStateDependent);
         }
     }
     destroy() {
@@ -13138,10 +13321,11 @@ class ProgramConfiguration {
             const useIntegerZoom = value.property.useIntegerZoom;
             const propType = value.property.specification['property-type'];
             const isCrossFaded = propType === 'cross-faded' || propType === 'cross-faded-data-driven';
-            if (expression.kind === 'constant') {
+            const sourceException = String(property) === 'line-dasharray' && layer.layout.get('line-cap').value.kind !== 'constant';
+            if (expression.kind === 'constant' && !sourceException) {
                 this.binders[property] = isCrossFaded ? new CrossFadedConstantBinder(expression.value, names) : new ConstantBinder(expression.value, names, type);
                 keys.push(`/u_${ property }`);
-            } else if (expression.kind === 'source' || isCrossFaded) {
+            } else if (expression.kind === 'source' || sourceException || isCrossFaded) {
                 const StructArrayLayout = layoutType(property, type, 'source');
                 this.binders[property] = isCrossFaded ? new CrossFadedCompositeBinder(expression, names, type, useIntegerZoom, zoom, StructArrayLayout, layer.id) : new SourceExpressionBinder(expression, names, type, StructArrayLayout);
                 keys.push(`/a_${ property }`);
@@ -13204,13 +13388,9 @@ class ProgramConfiguration {
         const result = [];
         for (const property in this.binders) {
             const binder = this.binders[property];
-            if (binder instanceof SourceExpressionBinder || binder instanceof CompositeExpressionBinder) {
+            if (binder instanceof SourceExpressionBinder || binder instanceof CompositeExpressionBinder || binder instanceof CrossFadedCompositeBinder) {
                 for (let i = 0; i < binder.paintVertexAttributes.length; i++) {
                     result.push(binder.paintVertexAttributes[i].name);
-                }
-            } else if (binder instanceof CrossFadedCompositeBinder) {
-                for (let i = 0; i < patternAttributes.members.length; i++) {
-                    result.push(patternAttributes.members[i].name);
                 }
             }
         }
@@ -13326,69 +13506,74 @@ class ProgramConfigurationSet {
         }
     }
 }
+const attributeNameExceptions = {
+    'text-opacity': ['opacity'],
+    'icon-opacity': ['opacity'],
+    'text-color': ['fill_color'],
+    'icon-color': ['fill_color'],
+    'text-halo-color': ['halo_color'],
+    'icon-halo-color': ['halo_color'],
+    'text-halo-blur': ['halo_blur'],
+    'icon-halo-blur': ['halo_blur'],
+    'text-halo-width': ['halo_width'],
+    'icon-halo-width': ['halo_width'],
+    'line-gap-width': ['gapwidth'],
+    'line-pattern': [
+        'pattern_to',
+        'pattern_from',
+        'pixel_ratio_to',
+        'pixel_ratio_from'
+    ],
+    'fill-pattern': [
+        'pattern_to',
+        'pattern_from',
+        'pixel_ratio_to',
+        'pixel_ratio_from'
+    ],
+    'fill-extrusion-pattern': [
+        'pattern_to',
+        'pattern_from',
+        'pixel_ratio_to',
+        'pixel_ratio_from'
+    ],
+    'line-dasharray': [
+        'dash_to',
+        'dash_from'
+    ]
+};
 function paintAttributeNames(property, type) {
-    const attributeNameExceptions = {
-        'text-opacity': ['opacity'],
-        'icon-opacity': ['opacity'],
-        'text-color': ['fill_color'],
-        'icon-color': ['fill_color'],
-        'text-halo-color': ['halo_color'],
-        'icon-halo-color': ['halo_color'],
-        'text-halo-blur': ['halo_blur'],
-        'icon-halo-blur': ['halo_blur'],
-        'text-halo-width': ['halo_width'],
-        'icon-halo-width': ['halo_width'],
-        'line-gap-width': ['gapwidth'],
-        'line-pattern': [
-            'pattern_to',
-            'pattern_from',
-            'pixel_ratio_to',
-            'pixel_ratio_from'
-        ],
-        'fill-pattern': [
-            'pattern_to',
-            'pattern_from',
-            'pixel_ratio_to',
-            'pixel_ratio_from'
-        ],
-        'fill-extrusion-pattern': [
-            'pattern_to',
-            'pattern_from',
-            'pixel_ratio_to',
-            'pixel_ratio_from'
-        ]
-    };
     return attributeNameExceptions[property] || [property.replace(`${ type }-`, '').replace(/-/g, '_')];
 }
-function getLayoutException(property) {
-    const propertyExceptions = {
-        'line-pattern': {
-            'source': StructArrayLayout10ui20,
-            'composite': StructArrayLayout10ui20
-        },
-        'fill-pattern': {
-            'source': StructArrayLayout10ui20,
-            'composite': StructArrayLayout10ui20
-        },
-        'fill-extrusion-pattern': {
-            'source': StructArrayLayout10ui20,
-            'composite': StructArrayLayout10ui20
-        }
-    };
-    return propertyExceptions[property];
-}
+const propertyExceptions = {
+    'line-pattern': {
+        'source': StructArrayLayout10ui20,
+        'composite': StructArrayLayout10ui20
+    },
+    'fill-pattern': {
+        'source': StructArrayLayout10ui20,
+        'composite': StructArrayLayout10ui20
+    },
+    'fill-extrusion-pattern': {
+        'source': StructArrayLayout10ui20,
+        'composite': StructArrayLayout10ui20
+    },
+    'line-dasharray': {
+        'source': StructArrayLayout8ui16,
+        'composite': StructArrayLayout8ui16
+    }
+};
+const defaultLayouts = {
+    'color': {
+        'source': StructArrayLayout2f8,
+        'composite': StructArrayLayout4f16
+    },
+    'number': {
+        'source': StructArrayLayout1f4,
+        'composite': StructArrayLayout2f8
+    }
+};
 function layoutType(property, type, binderType) {
-    const defaultLayouts = {
-        'color': {
-            'source': StructArrayLayout2f8,
-            'composite': StructArrayLayout4f16
-        },
-        'number': {
-            'source': StructArrayLayout1f4,
-            'composite': StructArrayLayout2f8
-        }
-    };
-    const layoutException = getLayoutException(property);
+    const layoutException = propertyExceptions[property];
     return layoutException && layoutException[binderType] || defaultLayouts[type][binderType];
 }
 register('ConstantBinder', ConstantBinder);
@@ -14340,6 +14525,25 @@ function rotateZ$1(out, a, rad) {
     out[7] = a13 * c - a03 * s;
     return out;
 }
+function fromScaling(out, v) {
+    out[0] = v[0];
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    out[4] = 0;
+    out[5] = v[1];
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 0;
+    out[9] = 0;
+    out[10] = v[2];
+    out[11] = 0;
+    out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+    out[15] = 1;
+    return out;
+}
 function fromQuat(out, q) {
     var x = q[0], y = q[1], z = q[2], w = q[3];
     var x2 = x + x;
@@ -14515,6 +14719,15 @@ function cross(out, a, b) {
     out[0] = ay * bz - az * by;
     out[1] = az * bx - ax * bz;
     out[2] = ax * by - ay * bx;
+    return out;
+}
+function transformMat4$1(out, a, m) {
+    var x = a[0], y = a[1], z = a[2];
+    var w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    w = w || 1;
+    out[0] = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
+    out[1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+    out[2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) / w;
     return out;
 }
 function transformMat3(out, a, m) {
@@ -16196,7 +16409,8 @@ var vectorTile = {
 const vectorTileFeatureTypes$2 = vectorTile.VectorTileFeature.types;
 const EARCUT_MAX_RINGS = 500;
 const FACTOR = Math.pow(2, 13);
-const ELEVATION_SCALE = 7.3;
+const ELEVATION_SCALE = 7;
+const ELEVATION_OFFSET = 450;
 function addVertex$1(vertexArray, x, y, nxRatio, nySign, normalUp, top, e) {
     vertexArray.emplaceBack((x << 1) + top, (y << 1) + normalUp, (Math.floor(nxRatio * FACTOR) << 1) + nySign, Math.round(e));
 }
@@ -16517,7 +16731,7 @@ class FillExtrusionBucket {
                 x = (Math.max(c.x, 1) << 3) + Math.min(7, Math.round(span.x / 10));
                 y = (Math.max(c.y, 1) << 3) + Math.min(7, Math.round(span.y / 10));
             } else {
-                x = Math.ceil(c.x * ELEVATION_SCALE);
+                x = Math.ceil((c.x + ELEVATION_OFFSET) * ELEVATION_SCALE);
                 y = 0;
             }
         } else {
@@ -16806,7 +17020,7 @@ function getTerrainHeightOffset(x, y, zBase, zTop, demSampler, centroid, exagger
     };
 }
 function elevationFromUint16(n) {
-    return n / ELEVATION_SCALE;
+    return n / ELEVATION_SCALE - ELEVATION_OFFSET;
 }
 function flatElevation(demSampler, centroid, lat) {
     const posX = Math.floor(centroid[0] / 8);
@@ -16927,16 +17141,81 @@ class LineBucket {
                 return a.sortKey - b.sortKey;
             });
         }
+        const {lineAtlas, featureIndex} = options;
+        const hasFeatureDashes = this.addConstantDashes(lineAtlas);
         for (const bucketFeature of bucketFeatures) {
             const {geometry, index, sourceLayerIndex} = bucketFeature;
+            if (hasFeatureDashes) {
+                this.addFeatureDashes(bucketFeature, lineAtlas);
+            }
             if (this.hasPattern) {
                 const patternBucketFeature = addPatternDependencies('line', this.layers, bucketFeature, this.zoom, options);
                 this.patternFeatures.push(patternBucketFeature);
             } else {
-                this.addFeature(bucketFeature, geometry, index, canonical, {});
+                this.addFeature(bucketFeature, geometry, index, canonical, lineAtlas.positions);
             }
             const feature = features[index].feature;
-            options.featureIndex.insert(feature, geometry, index, sourceLayerIndex, this.index);
+            featureIndex.insert(feature, geometry, index, sourceLayerIndex, this.index);
+        }
+    }
+    addConstantDashes(lineAtlas) {
+        let hasFeatureDashes = false;
+        for (const layer of this.layers) {
+            const dashPropertyValue = layer.paint.get('line-dasharray').value;
+            const capPropertyValue = layer.layout.get('line-cap').value;
+            if (dashPropertyValue.kind !== 'constant' || capPropertyValue.kind !== 'constant') {
+                hasFeatureDashes = true;
+            } else {
+                const constCap = capPropertyValue.value;
+                const constDash = dashPropertyValue.value;
+                if (!constDash)
+                    continue;
+                lineAtlas.addDash(constDash.from, constCap);
+                lineAtlas.addDash(constDash.to, constCap);
+                if (constDash.other)
+                    lineAtlas.addDash(constDash.other, constCap);
+            }
+        }
+        return hasFeatureDashes;
+    }
+    addFeatureDashes(feature, lineAtlas) {
+        const zoom = this.zoom;
+        for (const layer of this.layers) {
+            const dashPropertyValue = layer.paint.get('line-dasharray').value;
+            const capPropertyValue = layer.layout.get('line-cap').value;
+            if (dashPropertyValue.kind === 'constant' && capPropertyValue.kind === 'constant')
+                continue;
+            let minDashArray, midDashArray, maxDashArray, minCap, midCap, maxCap;
+            if (dashPropertyValue.kind === 'constant') {
+                const constDash = dashPropertyValue.value;
+                if (!constDash)
+                    continue;
+                minDashArray = constDash.other || constDash.to;
+                midDashArray = constDash.to;
+                maxDashArray = constDash.from;
+            } else {
+                minDashArray = dashPropertyValue.evaluate({ zoom: zoom - 1 }, feature);
+                midDashArray = dashPropertyValue.evaluate({ zoom }, feature);
+                maxDashArray = dashPropertyValue.evaluate({ zoom: zoom + 1 }, feature);
+            }
+            if (capPropertyValue.kind === 'constant') {
+                minCap = midCap = maxCap = capPropertyValue.value;
+            } else {
+                minCap = capPropertyValue.evaluate({ zoom: zoom - 1 }, feature);
+                midCap = capPropertyValue.evaluate({ zoom }, feature);
+                maxCap = capPropertyValue.evaluate({ zoom: zoom + 1 }, feature);
+            }
+            lineAtlas.addDash(minDashArray, minCap);
+            lineAtlas.addDash(midDashArray, midCap);
+            lineAtlas.addDash(maxDashArray, maxCap);
+            const min = lineAtlas.getKey(minDashArray, minCap);
+            const mid = lineAtlas.getKey(midDashArray, midCap);
+            const max = lineAtlas.getKey(maxDashArray, maxCap);
+            feature.patterns[layer.id] = {
+                min,
+                mid,
+                max
+            };
         }
     }
     update(states, vtLayer, imagePositions) {
@@ -16987,7 +17266,7 @@ class LineBucket {
     addFeature(feature, geometry, index, canonical, imagePositions) {
         const layout = this.layers[0].layout;
         const join = layout.get('line-join').evaluate(feature, {});
-        const cap = layout.get('line-cap');
+        const cap = layout.get('line-cap').evaluate(feature, {});
         const miterLimit = layout.get('line-miter-limit');
         const roundLimit = layout.get('line-round-limit');
         this.lineClips = this.lineFeatureClips(feature);
@@ -17124,7 +17403,13 @@ class LineBucket {
                 this.addCurrentVertex(currentVertex, joinNormal, 0, 0, segment);
             } else if (currentJoin === 'square') {
                 const offset = prevVertex ? 1 : -1;
-                this.addCurrentVertex(currentVertex, joinNormal, offset, offset, segment);
+                if (!prevVertex) {
+                    this.addCurrentVertex(currentVertex, joinNormal, offset, offset, segment);
+                }
+                this.addCurrentVertex(currentVertex, joinNormal, 0, 0, segment);
+                if (prevVertex) {
+                    this.addCurrentVertex(currentVertex, joinNormal, offset, offset, segment);
+                }
             } else if (currentJoin === 'round') {
                 if (prevVertex) {
                     this.addCurrentVertex(currentVertex, prevNormal, 0, 0, segment);
@@ -17193,7 +17478,7 @@ register('LineBucket', LineBucket, {
 });
 
 const layout$1 = new Properties({
-    'line-cap': new DataConstantProperty(spec['layout_line']['line-cap']),
+    'line-cap': new DataDrivenProperty(spec['layout_line']['line-cap']),
     'line-join': new DataDrivenProperty(spec['layout_line']['line-join']),
     'line-miter-limit': new DataConstantProperty(spec['layout_line']['line-miter-limit']),
     'line-round-limit': new DataConstantProperty(spec['layout_line']['line-round-limit']),
@@ -17208,7 +17493,7 @@ const paint$4 = new Properties({
     'line-gap-width': new DataDrivenProperty(spec['paint_line']['line-gap-width']),
     'line-offset': new DataDrivenProperty(spec['paint_line']['line-offset']),
     'line-blur': new DataDrivenProperty(spec['paint_line']['line-blur']),
-    'line-dasharray': new CrossFadedProperty(spec['paint_line']['line-dasharray']),
+    'line-dasharray': new CrossFadedDataDrivenProperty(spec['paint_line']['line-dasharray']),
     'line-pattern': new CrossFadedDataDrivenProperty(spec['paint_line']['line-pattern']),
     'line-gradient': new ColorRampProperty(spec['paint_line']['line-gradient'])
 });
@@ -17242,7 +17527,7 @@ class LineStyleLayer extends StyleLayer {
     _handleSpecialPaintPropertyUpdate(name) {
         if (name === 'line-gradient') {
             const expression = this._transitionablePaint._values['line-gradient'].value.expression;
-            this.stepInterpolant = expression._styleExpression.expression instanceof Step;
+            this.stepInterpolant = expression._styleExpression && expression._styleExpression.expression instanceof Step;
             this.gradientVersion = (this.gradientVersion + 1) % MAX_SAFE_INTEGER;
         }
     }
@@ -18797,9 +19082,6 @@ class ImagePosition {
             this.paddedRect.x + this.paddedRect.w - IMAGE_PADDING,
             this.paddedRect.y + this.paddedRect.h - IMAGE_PADDING
         ];
-    }
-    get tlbr() {
-        return this.tl.concat(this.br);
     }
     get displaySize() {
         return [
@@ -20515,7 +20797,6 @@ function performSymbolLayout(bucket, glyphMap, glyphPositions, imageMap, imagePo
     sizes.layoutTextSize = unevaluatedLayoutValues['text-size'].possiblyEvaluate(new EvaluationParameters(tileZoom + 1), canonical);
     sizes.layoutIconSize = unevaluatedLayoutValues['icon-size'].possiblyEvaluate(new EvaluationParameters(tileZoom + 1), canonical);
     sizes.textMaxSize = unevaluatedLayoutValues['text-size'].possiblyEvaluate(new EvaluationParameters(18), canonical);
-    const lineHeight = layout.get('text-line-height') * ONE_EM;
     const textAlongLine = layout.get('text-rotation-alignment') === 'map' && layout.get('symbol-placement') !== 'point';
     const keepUpright = layout.get('text-keep-upright');
     const textSize = layout.get('text-size');
@@ -20536,6 +20817,7 @@ function performSymbolLayout(bucket, glyphMap, glyphPositions, imageMap, imagePo
         if (text) {
             const unformattedText = text.toString();
             const spacing = layout.get('text-letter-spacing').evaluate(feature, {}, canonical) * ONE_EM;
+            const lineHeight = layout.get('text-line-height').evaluate(feature, {}, canonical) * ONE_EM;
             const spacingIfAllowed = allowsLetterSpacing(unformattedText) ? spacing : 0;
             const textAnchor = layout.get('text-anchor').evaluate(feature, {}, canonical);
             const variableTextAnchor = layout.get('text-variable-anchor');
@@ -20609,7 +20891,9 @@ function performSymbolLayout(bucket, glyphMap, glyphPositions, imageMap, imagePo
             }
         }
         const shapedText = getDefaultHorizontalShaping(shapedTextOrientations.horizontal) || shapedTextOrientations.vertical;
-        bucket.iconsInText = shapedText ? shapedText.iconsInText : false;
+        if (!bucket.iconsInText) {
+            bucket.iconsInText = shapedText ? shapedText.iconsInText : false;
+        }
         if (shapedText || shapedIcon) {
             addFeature(bucket, feature, shapedTextOrientations, shapedIcon, imageMap, sizes, layoutTextSize, layoutIconSize, textOffset, isSDFIcon, canonical);
         }
@@ -21529,7 +21813,7 @@ const layout = new Properties({
     'text-font': new DataDrivenProperty(spec['layout_symbol']['text-font']),
     'text-size': new DataDrivenProperty(spec['layout_symbol']['text-size']),
     'text-max-width': new DataDrivenProperty(spec['layout_symbol']['text-max-width']),
-    'text-line-height': new DataConstantProperty(spec['layout_symbol']['text-line-height']),
+    'text-line-height': new DataDrivenProperty(spec['layout_symbol']['text-line-height']),
     'text-letter-spacing': new DataDrivenProperty(spec['layout_symbol']['text-letter-spacing']),
     'text-justify': new DataDrivenProperty(spec['layout_symbol']['text-justify']),
     'text-radial-offset': new DataDrivenProperty(spec['layout_symbol']['text-radial-offset']),
@@ -21993,6 +22277,379 @@ class Texture {
     }
 }
 
+class LngLatBounds {
+    constructor(sw, ne) {
+        if (!sw) ; else if (ne) {
+            this.setSouthWest(sw).setNorthEast(ne);
+        } else if (sw.length === 4) {
+            this.setSouthWest([
+                sw[0],
+                sw[1]
+            ]).setNorthEast([
+                sw[2],
+                sw[3]
+            ]);
+        } else {
+            this.setSouthWest(sw[0]).setNorthEast(sw[1]);
+        }
+    }
+    setNorthEast(ne) {
+        this._ne = ne instanceof LngLat ? new LngLat(ne.lng, ne.lat) : LngLat.convert(ne);
+        return this;
+    }
+    setSouthWest(sw) {
+        this._sw = sw instanceof LngLat ? new LngLat(sw.lng, sw.lat) : LngLat.convert(sw);
+        return this;
+    }
+    extend(obj) {
+        const sw = this._sw, ne = this._ne;
+        let sw2, ne2;
+        if (obj instanceof LngLat) {
+            sw2 = obj;
+            ne2 = obj;
+        } else if (obj instanceof LngLatBounds) {
+            sw2 = obj._sw;
+            ne2 = obj._ne;
+            if (!sw2 || !ne2)
+                return this;
+        } else {
+            if (Array.isArray(obj)) {
+                if (obj.length === 4 || obj.every(Array.isArray)) {
+                    const lngLatBoundsObj = obj;
+                    return this.extend(LngLatBounds.convert(lngLatBoundsObj));
+                } else {
+                    const lngLatObj = obj;
+                    return this.extend(LngLat.convert(lngLatObj));
+                }
+            }
+            return this;
+        }
+        if (!sw && !ne) {
+            this._sw = new LngLat(sw2.lng, sw2.lat);
+            this._ne = new LngLat(ne2.lng, ne2.lat);
+        } else {
+            sw.lng = Math.min(sw2.lng, sw.lng);
+            sw.lat = Math.min(sw2.lat, sw.lat);
+            ne.lng = Math.max(ne2.lng, ne.lng);
+            ne.lat = Math.max(ne2.lat, ne.lat);
+        }
+        return this;
+    }
+    getCenter() {
+        return new LngLat((this._sw.lng + this._ne.lng) / 2, (this._sw.lat + this._ne.lat) / 2);
+    }
+    getSouthWest() {
+        return this._sw;
+    }
+    getNorthEast() {
+        return this._ne;
+    }
+    getNorthWest() {
+        return new LngLat(this.getWest(), this.getNorth());
+    }
+    getSouthEast() {
+        return new LngLat(this.getEast(), this.getSouth());
+    }
+    getWest() {
+        return this._sw.lng;
+    }
+    getSouth() {
+        return this._sw.lat;
+    }
+    getEast() {
+        return this._ne.lng;
+    }
+    getNorth() {
+        return this._ne.lat;
+    }
+    toArray() {
+        return [
+            this._sw.toArray(),
+            this._ne.toArray()
+        ];
+    }
+    toString() {
+        return `LngLatBounds(${ this._sw.toString() }, ${ this._ne.toString() })`;
+    }
+    isEmpty() {
+        return !(this._sw && this._ne);
+    }
+    contains(lnglat) {
+        const {lng, lat} = LngLat.convert(lnglat);
+        const containsLatitude = this._sw.lat <= lat && lat <= this._ne.lat;
+        let containsLongitude = this._sw.lng <= lng && lng <= this._ne.lng;
+        if (this._sw.lng > this._ne.lng) {
+            containsLongitude = this._sw.lng >= lng && lng >= this._ne.lng;
+        }
+        return containsLatitude && containsLongitude;
+    }
+    static convert(input) {
+        if (!input || input instanceof LngLatBounds)
+            return input;
+        return new LngLatBounds(input);
+    }
+}
+
+const earthRadius = 6371008.8;
+class LngLat {
+    constructor(lng, lat) {
+        if (isNaN(lng) || isNaN(lat)) {
+            throw new Error(`Invalid LngLat object: (${ lng }, ${ lat })`);
+        }
+        this.lng = +lng;
+        this.lat = +lat;
+        if (this.lat > 90 || this.lat < -90) {
+            throw new Error('Invalid LngLat latitude value: must be between -90 and 90');
+        }
+    }
+    wrap() {
+        return new LngLat(wrap(this.lng, -180, 180), this.lat);
+    }
+    toArray() {
+        return [
+            this.lng,
+            this.lat
+        ];
+    }
+    toString() {
+        return `LngLat(${ this.lng }, ${ this.lat })`;
+    }
+    distanceTo(lngLat) {
+        const rad = Math.PI / 180;
+        const lat1 = this.lat * rad;
+        const lat2 = lngLat.lat * rad;
+        const a = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos((lngLat.lng - this.lng) * rad);
+        const maxMeters = earthRadius * Math.acos(Math.min(a, 1));
+        return maxMeters;
+    }
+    toBounds(radius = 0) {
+        const earthCircumferenceInMetersAtEquator = 40075017;
+        const latAccuracy = 360 * radius / earthCircumferenceInMetersAtEquator, lngAccuracy = latAccuracy / Math.cos(Math.PI / 180 * this.lat);
+        return new LngLatBounds(new LngLat(this.lng - lngAccuracy, this.lat - latAccuracy), new LngLat(this.lng + lngAccuracy, this.lat + latAccuracy));
+    }
+    static convert(input) {
+        if (input instanceof LngLat) {
+            return input;
+        }
+        if (Array.isArray(input) && (input.length === 2 || input.length === 3)) {
+            return new LngLat(Number(input[0]), Number(input[1]));
+        }
+        if (!Array.isArray(input) && typeof input === 'object' && input !== null) {
+            return new LngLat(Number('lng' in input ? input.lng : input.lon), Number(input.lat));
+        }
+        throw new Error('`LngLatLike` argument must be specified as a LngLat instance, an object {lng: <lng>, lat: <lat>}, an object {lon: <lng>, lat: <lat>}, or an array of [<lng>, <lat>]');
+    }
+}
+
+const earthCircumfrence = 2 * Math.PI * earthRadius;
+function circumferenceAtLatitude(latitude) {
+    return earthCircumfrence * Math.cos(latitude * Math.PI / 180);
+}
+function mercatorXfromLng(lng) {
+    return (180 + lng) / 360;
+}
+function mercatorYfromLat(lat) {
+    return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
+}
+function mercatorZfromAltitude(altitude, lat) {
+    return altitude / circumferenceAtLatitude(lat);
+}
+function lngFromMercatorX(x) {
+    return x * 360 - 180;
+}
+function latFromMercatorY(y) {
+    const y2 = 180 - y * 360;
+    return 360 / Math.PI * Math.atan(Math.exp(y2 * Math.PI / 180)) - 90;
+}
+function altitudeFromMercatorZ(z, y) {
+    return z * circumferenceAtLatitude(latFromMercatorY(y));
+}
+function mercatorScale(lat) {
+    return 1 / Math.cos(lat * Math.PI / 180);
+}
+class MercatorCoordinate {
+    constructor(x, y, z = 0) {
+        this.x = +x;
+        this.y = +y;
+        this.z = +z;
+    }
+    static fromLngLat(lngLatLike, altitude = 0) {
+        const lngLat = LngLat.convert(lngLatLike);
+        return new MercatorCoordinate(mercatorXfromLng(lngLat.lng), mercatorYfromLat(lngLat.lat), mercatorZfromAltitude(altitude, lngLat.lat));
+    }
+    toLngLat() {
+        return new LngLat(lngFromMercatorX(this.x), latFromMercatorY(this.y));
+    }
+    toAltitude() {
+        return altitudeFromMercatorZ(this.z, this.y);
+    }
+    meterInMercatorCoordinateUnits() {
+        return 1 / earthCircumfrence * mercatorScale(latFromMercatorY(this.y));
+    }
+}
+
+class LineAtlas {
+    constructor(width, height) {
+        this.width = width;
+        this.height = height;
+        this.nextRow = 0;
+        this.image = new AlphaImage({
+            width,
+            height
+        });
+        this.positions = {};
+        this.uploaded = false;
+    }
+    getDash(dasharray, lineCap) {
+        const key = this.getKey(dasharray, lineCap);
+        return this.positions[key];
+    }
+    trim() {
+        const width = this.width;
+        const height = this.height = nextPowerOfTwo(this.nextRow);
+        this.image.resize({
+            width,
+            height
+        });
+    }
+    getKey(dasharray, lineCap) {
+        return dasharray.join(',') + lineCap;
+    }
+    getDashRanges(dasharray, lineAtlasWidth, stretch) {
+        const oddDashArray = dasharray.length % 2 === 1;
+        const ranges = [];
+        let left = oddDashArray ? -dasharray[dasharray.length - 1] * stretch : 0;
+        let right = dasharray[0] * stretch;
+        let isDash = true;
+        ranges.push({
+            left,
+            right,
+            isDash,
+            zeroLength: dasharray[0] === 0
+        });
+        let currentDashLength = dasharray[0];
+        for (let i = 1; i < dasharray.length; i++) {
+            isDash = !isDash;
+            const dashLength = dasharray[i];
+            left = currentDashLength * stretch;
+            currentDashLength += dashLength;
+            right = currentDashLength * stretch;
+            ranges.push({
+                left,
+                right,
+                isDash,
+                zeroLength: dashLength === 0
+            });
+        }
+        return ranges;
+    }
+    addRoundDash(ranges, stretch, n) {
+        const halfStretch = stretch / 2;
+        for (let y = -n; y <= n; y++) {
+            const row = this.nextRow + n + y;
+            const index = this.width * row;
+            let currIndex = 0;
+            let range = ranges[currIndex];
+            for (let x = 0; x < this.width; x++) {
+                if (x / range.right > 1) {
+                    range = ranges[++currIndex];
+                }
+                const distLeft = Math.abs(x - range.left);
+                const distRight = Math.abs(x - range.right);
+                const minDist = Math.min(distLeft, distRight);
+                let signedDistance;
+                const distMiddle = y / n * (halfStretch + 1);
+                if (range.isDash) {
+                    const distEdge = halfStretch - Math.abs(distMiddle);
+                    signedDistance = Math.sqrt(minDist * minDist + distEdge * distEdge);
+                } else {
+                    signedDistance = halfStretch - Math.sqrt(minDist * minDist + distMiddle * distMiddle);
+                }
+                this.image.data[index + x] = Math.max(0, Math.min(255, signedDistance + 128));
+            }
+        }
+    }
+    addRegularDash(ranges, capLength) {
+        for (let i = ranges.length - 1; i >= 0; --i) {
+            const part = ranges[i];
+            const next = ranges[i + 1];
+            if (part.zeroLength) {
+                ranges.splice(i, 1);
+            } else if (next && next.isDash === part.isDash) {
+                next.left = part.left;
+                ranges.splice(i, 1);
+            }
+        }
+        const first = ranges[0];
+        const last = ranges[ranges.length - 1];
+        if (first.isDash === last.isDash) {
+            first.left = last.left - this.width;
+            last.right = first.right + this.width;
+        }
+        const index = this.width * this.nextRow;
+        let currIndex = 0;
+        let range = ranges[currIndex];
+        for (let x = 0; x < this.width; x++) {
+            if (x / range.right > 1) {
+                range = ranges[++currIndex];
+            }
+            const distLeft = Math.abs(x - range.left);
+            const distRight = Math.abs(x - range.right);
+            const minDist = Math.min(distLeft, distRight);
+            const signedDistance = (range.isDash ? minDist : -minDist) + capLength;
+            this.image.data[index + x] = Math.max(0, Math.min(255, signedDistance + 128));
+        }
+    }
+    addDash(dasharray, lineCap) {
+        const key = this.getKey(dasharray, lineCap);
+        if (this.positions[key])
+            return this.positions[key];
+        const round = lineCap === 'round';
+        const n = round ? 7 : 0;
+        const height = 2 * n + 1;
+        if (this.nextRow + height > this.height) {
+            warnOnce('LineAtlas out of space');
+            return null;
+        }
+        if (dasharray.length === 0) {
+            dasharray.push(1);
+        }
+        let length = 0;
+        for (let i = 0; i < dasharray.length; i++) {
+            if (dasharray[i] < 0) {
+                warnOnce('Negative value is found in line dasharray, replacing values with 0');
+                dasharray[i] = 0;
+            }
+            length += dasharray[i];
+        }
+        if (length !== 0) {
+            const stretch = this.width / length;
+            const ranges = this.getDashRanges(dasharray, this.width, stretch);
+            if (round) {
+                this.addRoundDash(ranges, stretch, n);
+            } else {
+                const capLength = lineCap === 'square' ? 0.5 * stretch : 0;
+                this.addRegularDash(ranges, capLength);
+            }
+        }
+        const y = this.nextRow + n;
+        this.nextRow += height;
+        const pos = {
+            tl: [
+                y,
+                n
+            ],
+            br: [
+                length,
+                0
+            ]
+        };
+        this.positions[key] = pos;
+        return pos;
+    }
+}
+register('LineAtlas', LineAtlas);
+
 class ThrottledInvoker {
     constructor(callback) {
         this._callback = callback;
@@ -22233,217 +22890,6 @@ class Actor {
     }
 }
 
-class LngLatBounds {
-    constructor(sw, ne) {
-        if (!sw) ; else if (ne) {
-            this.setSouthWest(sw).setNorthEast(ne);
-        } else if (sw.length === 4) {
-            this.setSouthWest([
-                sw[0],
-                sw[1]
-            ]).setNorthEast([
-                sw[2],
-                sw[3]
-            ]);
-        } else {
-            this.setSouthWest(sw[0]).setNorthEast(sw[1]);
-        }
-    }
-    setNorthEast(ne) {
-        this._ne = ne instanceof LngLat ? new LngLat(ne.lng, ne.lat) : LngLat.convert(ne);
-        return this;
-    }
-    setSouthWest(sw) {
-        this._sw = sw instanceof LngLat ? new LngLat(sw.lng, sw.lat) : LngLat.convert(sw);
-        return this;
-    }
-    extend(obj) {
-        const sw = this._sw, ne = this._ne;
-        let sw2, ne2;
-        if (obj instanceof LngLat) {
-            sw2 = obj;
-            ne2 = obj;
-        } else if (obj instanceof LngLatBounds) {
-            sw2 = obj._sw;
-            ne2 = obj._ne;
-            if (!sw2 || !ne2)
-                return this;
-        } else {
-            if (Array.isArray(obj)) {
-                if (obj.length === 4 || obj.every(Array.isArray)) {
-                    const lngLatBoundsObj = obj;
-                    return this.extend(LngLatBounds.convert(lngLatBoundsObj));
-                } else {
-                    const lngLatObj = obj;
-                    return this.extend(LngLat.convert(lngLatObj));
-                }
-            }
-            return this;
-        }
-        if (!sw && !ne) {
-            this._sw = new LngLat(sw2.lng, sw2.lat);
-            this._ne = new LngLat(ne2.lng, ne2.lat);
-        } else {
-            sw.lng = Math.min(sw2.lng, sw.lng);
-            sw.lat = Math.min(sw2.lat, sw.lat);
-            ne.lng = Math.max(ne2.lng, ne.lng);
-            ne.lat = Math.max(ne2.lat, ne.lat);
-        }
-        return this;
-    }
-    getCenter() {
-        return new LngLat((this._sw.lng + this._ne.lng) / 2, (this._sw.lat + this._ne.lat) / 2);
-    }
-    getSouthWest() {
-        return this._sw;
-    }
-    getNorthEast() {
-        return this._ne;
-    }
-    getNorthWest() {
-        return new LngLat(this.getWest(), this.getNorth());
-    }
-    getSouthEast() {
-        return new LngLat(this.getEast(), this.getSouth());
-    }
-    getWest() {
-        return this._sw.lng;
-    }
-    getSouth() {
-        return this._sw.lat;
-    }
-    getEast() {
-        return this._ne.lng;
-    }
-    getNorth() {
-        return this._ne.lat;
-    }
-    toArray() {
-        return [
-            this._sw.toArray(),
-            this._ne.toArray()
-        ];
-    }
-    toString() {
-        return `LngLatBounds(${ this._sw.toString() }, ${ this._ne.toString() })`;
-    }
-    isEmpty() {
-        return !(this._sw && this._ne);
-    }
-    contains(lnglat) {
-        const {lng, lat} = LngLat.convert(lnglat);
-        const containsLatitude = this._sw.lat <= lat && lat <= this._ne.lat;
-        let containsLongitude = this._sw.lng <= lng && lng <= this._ne.lng;
-        if (this._sw.lng > this._ne.lng) {
-            containsLongitude = this._sw.lng >= lng && lng >= this._ne.lng;
-        }
-        return containsLatitude && containsLongitude;
-    }
-    static convert(input) {
-        if (!input || input instanceof LngLatBounds)
-            return input;
-        return new LngLatBounds(input);
-    }
-}
-
-const earthRadius = 6371008.8;
-class LngLat {
-    constructor(lng, lat) {
-        if (isNaN(lng) || isNaN(lat)) {
-            throw new Error(`Invalid LngLat object: (${ lng }, ${ lat })`);
-        }
-        this.lng = +lng;
-        this.lat = +lat;
-        if (this.lat > 90 || this.lat < -90) {
-            throw new Error('Invalid LngLat latitude value: must be between -90 and 90');
-        }
-    }
-    wrap() {
-        return new LngLat(wrap(this.lng, -180, 180), this.lat);
-    }
-    toArray() {
-        return [
-            this.lng,
-            this.lat
-        ];
-    }
-    toString() {
-        return `LngLat(${ this.lng }, ${ this.lat })`;
-    }
-    distanceTo(lngLat) {
-        const rad = Math.PI / 180;
-        const lat1 = this.lat * rad;
-        const lat2 = lngLat.lat * rad;
-        const a = Math.sin(lat1) * Math.sin(lat2) + Math.cos(lat1) * Math.cos(lat2) * Math.cos((lngLat.lng - this.lng) * rad);
-        const maxMeters = earthRadius * Math.acos(Math.min(a, 1));
-        return maxMeters;
-    }
-    toBounds(radius = 0) {
-        const earthCircumferenceInMetersAtEquator = 40075017;
-        const latAccuracy = 360 * radius / earthCircumferenceInMetersAtEquator, lngAccuracy = latAccuracy / Math.cos(Math.PI / 180 * this.lat);
-        return new LngLatBounds(new LngLat(this.lng - lngAccuracy, this.lat - latAccuracy), new LngLat(this.lng + lngAccuracy, this.lat + latAccuracy));
-    }
-    static convert(input) {
-        if (input instanceof LngLat) {
-            return input;
-        }
-        if (Array.isArray(input) && (input.length === 2 || input.length === 3)) {
-            return new LngLat(Number(input[0]), Number(input[1]));
-        }
-        if (!Array.isArray(input) && typeof input === 'object' && input !== null) {
-            return new LngLat(Number('lng' in input ? input.lng : input.lon), Number(input.lat));
-        }
-        throw new Error('`LngLatLike` argument must be specified as a LngLat instance, an object {lng: <lng>, lat: <lat>}, an object {lon: <lng>, lat: <lat>}, or an array of [<lng>, <lat>]');
-    }
-}
-
-const earthCircumfrence = 2 * Math.PI * earthRadius;
-function circumferenceAtLatitude(latitude) {
-    return earthCircumfrence * Math.cos(latitude * Math.PI / 180);
-}
-function mercatorXfromLng(lng) {
-    return (180 + lng) / 360;
-}
-function mercatorYfromLat(lat) {
-    return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
-}
-function mercatorZfromAltitude(altitude, lat) {
-    return altitude / circumferenceAtLatitude(lat);
-}
-function lngFromMercatorX(x) {
-    return x * 360 - 180;
-}
-function latFromMercatorY(y) {
-    const y2 = 180 - y * 360;
-    return 360 / Math.PI * Math.atan(Math.exp(y2 * Math.PI / 180)) - 90;
-}
-function altitudeFromMercatorZ(z, y) {
-    return z * circumferenceAtLatitude(latFromMercatorY(y));
-}
-function mercatorScale(lat) {
-    return 1 / Math.cos(lat * Math.PI / 180);
-}
-class MercatorCoordinate {
-    constructor(x, y, z = 0) {
-        this.x = +x;
-        this.y = +y;
-        this.z = +z;
-    }
-    static fromLngLat(lngLatLike, altitude = 0) {
-        const lngLat = LngLat.convert(lngLatLike);
-        return new MercatorCoordinate(mercatorXfromLng(lngLat.lng), mercatorYfromLat(lngLat.lat), mercatorZfromAltitude(altitude, lngLat.lat));
-    }
-    toLngLat() {
-        return new LngLat(lngFromMercatorX(this.x), latFromMercatorY(this.y));
-    }
-    toAltitude() {
-        return altitudeFromMercatorZ(this.z, this.y);
-    }
-    meterInMercatorCoordinateUnits() {
-        return 1 / earthCircumfrence * mercatorScale(latFromMercatorY(this.y));
-    }
-}
-
 /**
  * getTileBBox
  *
@@ -22622,7 +23068,7 @@ function getQuadkey(z, x, y) {
     return quadkey;
 }
 register('CanonicalTileID', CanonicalTileID);
-register('OverscaledTileID', OverscaledTileID, { omit: ['posMatrix'] });
+register('OverscaledTileID', OverscaledTileID, { omit: ['projMatrix'] });
 
 class DictionaryCoder {
     constructor(strings) {
@@ -22782,20 +23228,29 @@ class Tile {
         if (data.glyphAtlasImage) {
             this.glyphAtlasImage = data.glyphAtlasImage;
         }
+        if (data.lineAtlas) {
+            this.lineAtlas = data.lineAtlas;
+        }
     }
     unloadVectorData() {
         for (const id in this.buckets) {
             this.buckets[id].destroy();
         }
         this.buckets = {};
-        if (this.imageAtlasTexture) {
-            this.imageAtlasTexture.destroy();
-        }
         if (this.imageAtlas) {
             this.imageAtlas = null;
         }
+        if (this.lineAtlas) {
+            this.lineAtlas = null;
+        }
+        if (this.imageAtlasTexture) {
+            this.imageAtlasTexture.destroy();
+        }
         if (this.glyphAtlasTexture) {
             this.glyphAtlasTexture.destroy();
+        }
+        if (this.lineAtlasTexture) {
+            this.lineAtlasTexture.destroy();
         }
         this.latestFeatureIndex = null;
         this.state = 'unloaded';
@@ -22818,6 +23273,10 @@ class Tile {
         if (this.glyphAtlasImage) {
             this.glyphAtlasTexture = new Texture(context, this.glyphAtlasImage, gl.ALPHA);
             this.glyphAtlasImage = null;
+        }
+        if (this.lineAtlas && !this.lineAtlas.uploaded) {
+            this.lineAtlasTexture = new Texture(context, this.lineAtlas.image, gl.ALPHA);
+            this.lineAtlas.uploaded = true;
         }
     }
     prepare(imageManager) {
@@ -24330,7 +24789,7 @@ class SourceCache extends Evented {
     getVisibleCoordinates(symbolLayer) {
         const coords = this.getRenderableIds(symbolLayer).map(id => this._tiles[id].tileID);
         for (const coord of coords) {
-            coord.posMatrix = this.transform.calculatePosMatrix(coord.toUnwrapped());
+            coord.projMatrix = this.transform.calculateProjMatrix(coord.toUnwrapped());
         }
         return coords;
     }
@@ -24388,7 +24847,12 @@ function isRasterType(type) {
 }
 
 class Elevation {
-    getAtPoint(point, defaultIfNotLoaded = 0) {
+    getAtPointOrZero(point, defaultIfNotLoaded = 0) {
+        return this.getAtPoint(point, defaultIfNotLoaded) || 0;
+    }
+    getAtPoint(point, defaultIfNotLoaded, exaggerated = true) {
+        if (defaultIfNotLoaded == null)
+            defaultIfNotLoaded = null;
         const src = this._source();
         if (!src)
             return defaultIfNotLoaded;
@@ -24411,11 +24875,12 @@ class Elevation {
         const y = (point.y * tilesAtTileZoom - demTile.tileID.canonical.y) * dem.dim;
         const i = Math.floor(x);
         const j = Math.floor(y);
-        return this.exaggeration() * number(number(dem.get(i, j), dem.get(i, j + 1), y - j), number(dem.get(i + 1, j), dem.get(i + 1, j + 1), y - j), x - i);
+        const exaggeration = exaggerated ? this.exaggeration() : 1;
+        return exaggeration * number(number(dem.get(i, j), dem.get(i, j + 1), y - j), number(dem.get(i + 1, j), dem.get(i + 1, j + 1), y - j), x - i);
     }
     getAtTileOffset(tileID, x, y) {
         const tilesAtTileZoom = 1 << tileID.canonical.z;
-        return this.getAtPoint(new MercatorCoordinate(tileID.wrap + (tileID.canonical.x + x / EXTENT) / tilesAtTileZoom, (tileID.canonical.y + y / EXTENT) / tilesAtTileZoom));
+        return this.getAtPointOrZero(new MercatorCoordinate(tileID.wrap + (tileID.canonical.x + x / EXTENT) / tilesAtTileZoom, (tileID.canonical.y + y / EXTENT) / tilesAtTileZoom));
     }
     getForTilePoints(tileID, points, interpolated, useDemTile) {
         const helper = DEMSampler.create(this, tileID, useDemTile);
@@ -24776,11 +25241,13 @@ class WorkerTile {
         const featureIndex = new FeatureIndex(this.tileID, this.promoteId);
         featureIndex.bucketLayerIDs = [];
         const buckets = {};
+        const lineAtlas = new LineAtlas(256, 256);
         const options = {
             featureIndex,
             iconDependencies: {},
             patternDependencies: {},
             glyphDependencies: {},
+            lineAtlas,
             availableImages
         };
         const layerFamilies = layerIndex.familiesBySource[this.source];
@@ -24844,6 +25311,7 @@ class WorkerTile {
                 featureIndex.bucketLayerIDs.push(family.map(l => l.id));
             }
         }
+        lineAtlas.trim();
         let error;
         let glyphMap;
         let iconMap;
@@ -24925,6 +25393,7 @@ class WorkerTile {
                     featureIndex,
                     collisionBoxArray: this.collisionBoxArray,
                     glyphAtlasImage: glyphAtlas.image,
+                    lineAtlas,
                     imageAtlas,
                     glyphMap: this.returnDependencies ? glyphMap : null,
                     iconMap: this.returnDependencies ? iconMap : null,
@@ -25166,6 +25635,7 @@ exports.Event = Event;
 exports.Evented = Evented;
 exports.GlyphManager = GlyphManager;
 exports.ImagePosition = ImagePosition;
+exports.LineAtlas = LineAtlas;
 exports.LngLat = LngLat;
 exports.LngLatBounds = LngLatBounds;
 exports.LocalGlyphMode = LocalGlyphMode;
@@ -25251,6 +25721,9 @@ exports.filterObject = filterObject;
 exports.fromMat4 = fromMat4;
 exports.fromQuat = fromQuat;
 exports.fromRotation = fromRotation;
+exports.fromScaling = fromScaling;
+exports.furthestTileCorner = furthestTileCorner;
+exports.getAABBPointSquareDist = getAABBPointSquareDist;
 exports.getAnchorAlignment = getAnchorAlignment;
 exports.getAnchorJustification = getAnchorJustification;
 exports.getBounds = getBounds;
@@ -25279,6 +25752,7 @@ exports.mul = mul;
 exports.mul$1 = mul$2;
 exports.mul$2 = mul$1;
 exports.multiply = multiply$2;
+exports.multiply$1 = multiply$1;
 exports.nextPowerOfTwo = nextPowerOfTwo;
 exports.normalize = normalize$2;
 exports.normalize$1 = normalize;
@@ -25313,6 +25787,7 @@ exports.scale$2 = scale;
 exports.scaleAndAdd = scaleAndAdd;
 exports.setCacheLimits = setCacheLimits;
 exports.setRTLTextPlugin = setRTLTextPlugin;
+exports.smoothstep = smoothstep;
 exports.spec = spec;
 exports.storeAuthState = storeAuthState;
 exports.sub = sub;
@@ -25320,11 +25795,13 @@ exports.subtract = subtract;
 exports.symbolSize = symbolSize;
 exports.transformMat3 = transformMat3;
 exports.transformMat4 = transformMat4;
+exports.transformMat4$1 = transformMat4$1;
 exports.transformQuat = transformQuat;
 exports.translate = translate;
 exports.triggerPluginCompletionEvent = triggerPluginCompletionEvent;
 exports.uniqueId = uniqueId;
 exports.validateCustomStyleLayer = validateCustomStyleLayer;
+exports.validateFog = validateFog;
 exports.validateLight = validateLight;
 exports.validateStyle = validateStyle;
 exports.values = values;
@@ -28182,7 +28659,7 @@ const properties$1 = new ref_properties.Properties({
     'color': new ref_properties.DataConstantProperty(ref_properties.spec.light.color),
     'intensity': new ref_properties.DataConstantProperty(ref_properties.spec.light.intensity)
 });
-const TRANSITION_SUFFIX$1 = '-transition';
+const TRANSITION_SUFFIX$2 = '-transition';
 class Light extends ref_properties.Evented {
     constructor(lightOptions) {
         super();
@@ -28199,8 +28676,8 @@ class Light extends ref_properties.Evented {
         }
         for (const name in light) {
             const value = light[name];
-            if (ref_properties.endsWith(name, TRANSITION_SUFFIX$1)) {
-                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX$1.length), value);
+            if (ref_properties.endsWith(name, TRANSITION_SUFFIX$2)) {
+                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX$2.length), value);
             } else {
                 this._transitionable.setValue(name, value);
             }
@@ -28234,7 +28711,7 @@ const properties = new ref_properties.Properties({
     'source': new ref_properties.DataConstantProperty(ref_properties.spec.terrain.source),
     'exaggeration': new ref_properties.DataConstantProperty(ref_properties.spec.terrain.exaggeration)
 });
-const TRANSITION_SUFFIX = '-transition';
+const TRANSITION_SUFFIX$1 = '-transition';
 class Terrain$1 extends ref_properties.Evented {
     constructor(terrainOptions) {
         super();
@@ -28248,8 +28725,8 @@ class Terrain$1 extends ref_properties.Evented {
     set(terrain) {
         for (const name in terrain) {
             const value = terrain[name];
-            if (ref_properties.endsWith(name, TRANSITION_SUFFIX)) {
-                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX.length), value);
+            if (ref_properties.endsWith(name, TRANSITION_SUFFIX$1)) {
+                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX$1.length), value);
             } else {
                 this._transitionable.setValue(name, value);
             }
@@ -28266,159 +28743,117 @@ class Terrain$1 extends ref_properties.Evented {
     }
 }
 
-class LineAtlas {
-    constructor(width, height) {
-        this.width = width;
-        this.height = height;
-        this.nextRow = 0;
-        this.data = new Uint8Array(this.width * this.height);
-        this.dashEntry = {};
+const FOG_PITCH_START = 45;
+const FOG_PITCH_END = 65;
+const FOG_SYMBOL_CLIPPING_THRESHOLD = 0.9;
+function getFogOpacity(state, pos, pitch, fov) {
+    const fogPitchOpacity = ref_properties.smoothstep(FOG_PITCH_START, FOG_PITCH_END, pitch);
+    const [start, end] = getFovAdjustedFogRange(state, fov);
+    const decay = 6;
+    const depth = ref_properties.length(pos);
+    const fogRange = (depth - start) / (end - start);
+    let falloff = 1 - Math.min(1, Math.exp(-decay * fogRange));
+    falloff *= falloff * falloff;
+    falloff = Math.min(1, 1.00747 * falloff);
+    return falloff * fogPitchOpacity * state.alpha;
+}
+function getFovAdjustedFogRange(state, fov) {
+    const shift = 0.5 / Math.tan(fov * 0.5);
+    return [
+        state.range[0] + shift,
+        state.range[1] + shift
+    ];
+}
+function getFogOpacityAtTileCoord(state, x, y, z, tileId, transform) {
+    const mat = transform.calculateFogTileMatrix(tileId);
+    const pos = [
+        x,
+        y,
+        z
+    ];
+    ref_properties.transformMat4$1(pos, pos, mat);
+    return getFogOpacity(state, pos, transform.pitch, transform._fov);
+}
+function getFogOpacityAtLngLat(state, lngLat, transform) {
+    const meters = ref_properties.MercatorCoordinate.fromLngLat(lngLat);
+    const elevation = transform.elevation ? transform.elevation.getAtPointOrZero(meters) : 0;
+    const pos = [
+        meters.x,
+        meters.y,
+        elevation
+    ];
+    ref_properties.transformMat4$1(pos, pos, transform.mercatorFogMatrix);
+    return getFogOpacity(state, pos, transform.pitch, transform._fov);
+}
+
+const fogProperties = new ref_properties.Properties({
+    'range': new ref_properties.DataConstantProperty(ref_properties.spec.fog.range),
+    'color': new ref_properties.DataConstantProperty(ref_properties.spec.fog.color),
+    'horizon-blend': new ref_properties.DataConstantProperty(ref_properties.spec.fog['horizon-blend'])
+});
+const TRANSITION_SUFFIX = '-transition';
+class Fog extends ref_properties.Evented {
+    constructor(fogOptions) {
+        super();
+        this._transitionable = new ref_properties.Transitionable(fogProperties);
+        this.set(fogOptions);
+        this._transitioning = this._transitionable.untransitioned();
     }
-    getDash(dasharray, round) {
-        const key = dasharray.join(',') + String(round);
-        if (!this.dashEntry[key]) {
-            this.dashEntry[key] = this.addDash(dasharray, round);
-        }
-        return this.dashEntry[key];
-    }
-    getDashRanges(dasharray, lineAtlasWidth, stretch) {
-        const oddDashArray = dasharray.length % 2 === 1;
-        const ranges = [];
-        let left = oddDashArray ? -dasharray[dasharray.length - 1] * stretch : 0;
-        let right = dasharray[0] * stretch;
-        let isDash = true;
-        ranges.push({
-            left,
-            right,
-            isDash,
-            zeroLength: dasharray[0] === 0
-        });
-        let currentDashLength = dasharray[0];
-        for (let i = 1; i < dasharray.length; i++) {
-            isDash = !isDash;
-            const dashLength = dasharray[i];
-            left = currentDashLength * stretch;
-            currentDashLength += dashLength;
-            right = currentDashLength * stretch;
-            ranges.push({
-                left,
-                right,
-                isDash,
-                zeroLength: dashLength === 0
-            });
-        }
-        return ranges;
-    }
-    addRoundDash(ranges, stretch, n) {
-        const halfStretch = stretch / 2;
-        for (let y = -n; y <= n; y++) {
-            const row = this.nextRow + n + y;
-            const index = this.width * row;
-            let currIndex = 0;
-            let range = ranges[currIndex];
-            for (let x = 0; x < this.width; x++) {
-                if (x / range.right > 1) {
-                    range = ranges[++currIndex];
-                }
-                const distLeft = Math.abs(x - range.left);
-                const distRight = Math.abs(x - range.right);
-                const minDist = Math.min(distLeft, distRight);
-                let signedDistance;
-                const distMiddle = y / n * (halfStretch + 1);
-                if (range.isDash) {
-                    const distEdge = halfStretch - Math.abs(distMiddle);
-                    signedDistance = Math.sqrt(minDist * minDist + distEdge * distEdge);
-                } else {
-                    signedDistance = halfStretch - Math.sqrt(minDist * minDist + distMiddle * distMiddle);
-                }
-                this.data[index + x] = Math.max(0, Math.min(255, signedDistance + 128));
-            }
-        }
-    }
-    addRegularDash(ranges) {
-        for (let i = ranges.length - 1; i >= 0; --i) {
-            const part = ranges[i];
-            const next = ranges[i + 1];
-            if (part.zeroLength) {
-                ranges.splice(i, 1);
-            } else if (next && next.isDash === part.isDash) {
-                next.left = part.left;
-                ranges.splice(i, 1);
-            }
-        }
-        const first = ranges[0];
-        const last = ranges[ranges.length - 1];
-        if (first.isDash === last.isDash) {
-            first.left = last.left - this.width;
-            last.right = first.right + this.width;
-        }
-        const index = this.width * this.nextRow;
-        let currIndex = 0;
-        let range = ranges[currIndex];
-        for (let x = 0; x < this.width; x++) {
-            if (x / range.right > 1) {
-                range = ranges[++currIndex];
-            }
-            const distLeft = Math.abs(x - range.left);
-            const distRight = Math.abs(x - range.right);
-            const minDist = Math.min(distLeft, distRight);
-            const signedDistance = range.isDash ? minDist : -minDist;
-            this.data[index + x] = Math.max(0, Math.min(255, signedDistance + 128));
-        }
-    }
-    addDash(dasharray, round) {
-        const n = round ? 7 : 0;
-        const height = 2 * n + 1;
-        if (this.nextRow + height > this.height) {
-            ref_properties.warnOnce('LineAtlas out of space');
-            return null;
-        }
-        if (dasharray.length === 0) {
-            dasharray.push(1);
-        }
-        let length = 0;
-        for (let i = 0; i < dasharray.length; i++) {
-            if (dasharray[i] < 0) {
-                ref_properties.warnOnce('Negative value is found in line dasharray, replacing values with 0');
-                dasharray[i] = 0;
-            }
-            length += dasharray[i];
-        }
-        if (length !== 0) {
-            const stretch = this.width / length;
-            const ranges = this.getDashRanges(dasharray, this.width, stretch);
-            if (round) {
-                this.addRoundDash(ranges, stretch, n);
-            } else {
-                this.addRegularDash(ranges);
-            }
-        }
-        const dashEntry = {
-            y: (this.nextRow + n + 0.5) / this.height,
-            height: 2 * n / this.height,
-            width: length
+    get state() {
+        return {
+            range: this.properties.get('range'),
+            horizonBlend: this.properties.get('horizon-blend'),
+            alpha: this.properties.get('color').a
         };
-        this.nextRow += height;
-        this.dirty = true;
-        return dashEntry;
     }
-    bind(context) {
-        const gl = context.gl;
-        if (!this.texture) {
-            this.texture = gl.createTexture();
-            gl.bindTexture(gl.TEXTURE_2D, this.texture);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, this.width, this.height, 0, gl.ALPHA, gl.UNSIGNED_BYTE, this.data);
-        } else {
-            gl.bindTexture(gl.TEXTURE_2D, this.texture);
-            if (this.dirty) {
-                this.dirty = false;
-                gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.width, this.height, gl.ALPHA, gl.UNSIGNED_BYTE, this.data);
+    get() {
+        return this._transitionable.serialize();
+    }
+    set(fog) {
+        if (this._validate(ref_properties.validateFog, fog)) {
+            return;
+        }
+        for (const name in fog) {
+            const value = fog[name];
+            if (ref_properties.endsWith(name, TRANSITION_SUFFIX)) {
+                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX.length), value);
+            } else {
+                this._transitionable.setValue(name, value);
             }
         }
+    }
+    getOpacity(pitch) {
+        const fogColor = this.properties && this.properties.get('color') || 1;
+        const pitchFactor = ref_properties.smoothstep(FOG_PITCH_START, FOG_PITCH_END, pitch);
+        return pitchFactor * fogColor.a;
+    }
+    getOpacityAtLatLng(lngLat, transform) {
+        return getFogOpacityAtLngLat(this.state, lngLat, transform);
+    }
+    getFovAdjustedRange(fov) {
+        return getFovAdjustedFogRange(this.state, fov);
+    }
+    updateTransitions(parameters) {
+        this._transitioning = this._transitionable.transitioned(parameters, this._transitioning);
+    }
+    hasTransition() {
+        return this._transitioning.hasTransition();
+    }
+    recalculate(parameters) {
+        this.properties = this._transitioning.possiblyEvaluate(parameters);
+    }
+    _validate(validate, value, options) {
+        if (options && options.validate === false) {
+            return false;
+        }
+        return ref_properties.emitValidationErrors(this, validate.call(ref_properties.validateStyle, ref_properties.extend({
+            value,
+            style: {
+                glyphs: true,
+                sprite: true
+            },
+            styleSpec: ref_properties.spec
+        })));
     }
 }
 
@@ -30473,7 +30908,7 @@ function getPixelPosMatrix(transform, tileID) {
         -1,
         0
     ]);
-    return ref_properties.multiply(t, t, transform.calculatePosMatrix(tileID.toUnwrapped()));
+    return ref_properties.multiply(t, t, transform.calculateProjMatrix(tileID.toUnwrapped()));
 }
 function queryRenderedFeatures(sourceCache, styleLayers, serializedLayers, queryGeometry, params, transform, use3DQuery, visualizeQueryGeometry = false) {
     const tileResults = sourceCache.tilesIn(queryGeometry, use3DQuery, visualizeQueryGeometry);
@@ -30717,7 +31152,8 @@ const operations = {
     setGlyphs: 'setGlyphs',
     setTransition: 'setTransition',
     setLight: 'setLight',
-    setTerrain: 'setTerrain'
+    setTerrain: 'setTerrain',
+    setFog: 'setFog'
 };
 function addSource(sourceId, after, commands) {
     commands.push({
@@ -31016,6 +31452,12 @@ function diffStyles(before, after) {
             commands.push({
                 command: operations.setLight,
                 args: [after.light]
+            });
+        }
+        if (!deepEqual(before.fog, after.fog)) {
+            commands.push({
+                command: operations.setFog,
+                args: [after.fog]
             });
         }
         const sourcesRemoved = {};
@@ -31660,7 +32102,7 @@ function xyTransformMat4(out, a, m) {
 
 const viewportPadding = 100;
 class CollisionIndex {
-    constructor(transform, grid = new GridIndex(transform.width + 2 * viewportPadding, transform.height + 2 * viewportPadding, 25), ignoredGrid = new GridIndex(transform.width + 2 * viewportPadding, transform.height + 2 * viewportPadding, 25)) {
+    constructor(transform, fogState, grid = new GridIndex(transform.width + 2 * viewportPadding, transform.height + 2 * viewportPadding, 25), ignoredGrid = new GridIndex(transform.width + 2 * viewportPadding, transform.height + 2 * viewportPadding, 25)) {
         this.transform = transform;
         this.grid = grid;
         this.ignoredGrid = ignoredGrid;
@@ -31669,9 +32111,10 @@ class CollisionIndex {
         this.screenBottomBoundary = transform.height + viewportPadding;
         this.gridRightBoundary = transform.width + 2 * viewportPadding;
         this.gridBottomBoundary = transform.height + 2 * viewportPadding;
+        this.fogState = fogState;
     }
     placeCollisionBox(scale, collisionBox, shift, allowOverlap, textPixelRatio, posMatrix, collisionGroupPredicate) {
-        const projectedPoint = this.projectAndGetPerspectiveRatio(posMatrix, collisionBox.anchorPointX, collisionBox.anchorPointY, collisionBox.elevation);
+        const projectedPoint = this.projectAndGetPerspectiveRatio(posMatrix, collisionBox.anchorPointX, collisionBox.anchorPointY, collisionBox.elevation, collisionBox.tileID);
         const tileToViewport = textPixelRatio * projectedPoint.perspectiveRatio;
         const tlX = (collisionBox.x1 * scale + shift.x - collisionBox.padding) * tileToViewport + projectedPoint.point.x;
         const tlY = (collisionBox.y1 * scale + shift.y - collisionBox.padding) * tileToViewport + projectedPoint.point.y;
@@ -31701,7 +32144,7 @@ class CollisionIndex {
         const getElevation = elevation ? p => elevation.getAtTileOffset(tileID, p.x, p.y) : _ => 0;
         const tileUnitAnchorPoint = new ref_properties.pointGeometry(symbol.anchorX, symbol.anchorY);
         const anchorElevation = getElevation(tileUnitAnchorPoint);
-        const screenAnchorPoint = this.projectAndGetPerspectiveRatio(posMatrix, tileUnitAnchorPoint.x, tileUnitAnchorPoint.y, anchorElevation);
+        const screenAnchorPoint = this.projectAndGetPerspectiveRatio(posMatrix, tileUnitAnchorPoint.x, tileUnitAnchorPoint.y, anchorElevation, tileID);
         const {perspectiveRatio} = screenAnchorPoint;
         const labelPlaneFontSize = pitchWithMap ? fontSize / perspectiveRatio : fontSize * perspectiveRatio;
         const labelPlaneFontScale = labelPlaneFontSize / ref_properties.ONE_EM;
@@ -31863,7 +32306,7 @@ class CollisionIndex {
             grid.insertCircle(key, collisionCircles[k], collisionCircles[k + 1], collisionCircles[k + 2]);
         }
     }
-    projectAndGetPerspectiveRatio(posMatrix, x, y, elevation) {
+    projectAndGetPerspectiveRatio(posMatrix, x, y, elevation, tileID) {
         const p = [
             x,
             y,
@@ -31873,7 +32316,12 @@ class CollisionIndex {
         let aboveHorizon = false;
         if (elevation || this.transform.pitch > 0) {
             ref_properties.transformMat4(p, p, posMatrix);
-            aboveHorizon = p[2] > p[3];
+            let behindFog = false;
+            if (this.fogState && tileID) {
+                const fogOpacity = getFogOpacityAtTileCoord(this.fogState, x, y, elevation || 0, tileID.toUnwrapped(), this.transform);
+                behindFog = fogOpacity > FOG_SYMBOL_CLIPPING_THRESHOLD;
+            }
+            aboveHorizon = p[2] > p[3] || behindFog;
         } else {
             xyTransformMat4(p, p, posMatrix);
         }
@@ -31988,9 +32436,9 @@ function offsetShift(shiftX, shiftY, rotateWithMap, pitchWithMap, angle) {
     return shift;
 }
 class Placement {
-    constructor(transform, fadeDuration, crossSourceCollisions, prevPlacement) {
+    constructor(transform, fadeDuration, crossSourceCollisions, prevPlacement, fogState) {
         this.transform = transform.clone();
-        this.collisionIndex = new CollisionIndex(this.transform);
+        this.collisionIndex = new CollisionIndex(this.transform, fogState);
         this.placements = {};
         this.opacities = {};
         this.variableOffsets = {};
@@ -32015,7 +32463,7 @@ class Placement {
         const layout = symbolBucket.layers[0].layout;
         const scale = Math.pow(2, this.transform.zoom - tile.tileID.overscaledZ);
         const textPixelRatio = tile.tileSize / ref_properties.EXTENT;
-        const posMatrix = this.transform.calculatePosMatrix(tile.tileID.toUnwrapped());
+        const posMatrix = this.transform.calculateProjMatrix(tile.tileID.toUnwrapped());
         const pitchWithMap = layout.get('text-pitch-alignment') === 'map';
         const rotateWithMap = layout.get('text-rotation-alignment') === 'map';
         const pixelsToTiles = pixelsToTileUnits(tile, 1, this.transform.zoom);
@@ -32146,14 +32594,15 @@ class Placement {
             if (collisionArrays.verticalTextFeatureIndex) {
                 verticalTextFeatureIndex = collisionArrays.verticalTextFeatureIndex;
             }
-            const updateElevation = box => {
+            const updateBoxData = box => {
+                box.tileID = this.retainedQueryData[bucket.bucketInstanceId].tileID;
                 if (!this.transform.elevation && !box.elevation)
                     return;
                 box.elevation = this.transform.elevation ? this.transform.elevation.getAtTileOffset(this.retainedQueryData[bucket.bucketInstanceId].tileID, box.anchorPointX, box.anchorPointY) : 0;
             };
             const textBox = collisionArrays.textBox;
             if (textBox) {
-                updateElevation(textBox);
+                updateBoxData(textBox);
                 const updatePreviousOrientationIfNotPlaced = isPlaced => {
                     let previousOrientation = ref_properties.WritingMode.horizontal;
                     if (bucket.allowVerticalPlacement && !isPlaced && this.prevPlacement) {
@@ -32198,7 +32647,7 @@ class Placement {
                     const placeVertical = () => {
                         const verticalTextBox = collisionArrays.verticalTextBox;
                         if (bucket.allowVerticalPlacement && symbolInstance.numVerticalGlyphVertices > 0 && verticalTextBox) {
-                            updateElevation(verticalTextBox);
+                            updateBoxData(verticalTextBox);
                             return placeBox(verticalTextBox, ref_properties.WritingMode.vertical);
                         }
                         return {
@@ -32223,7 +32672,7 @@ class Placement {
                         const height = (collisionTextBox.y2 - collisionTextBox.y1) * textBoxScale + 2 * collisionTextBox.padding;
                         const variableIconBox = hasIconTextFit && !iconAllowOverlap ? collisionIconBox : null;
                         if (variableIconBox)
-                            updateElevation(variableIconBox);
+                            updateBoxData(variableIconBox);
                         let placedBox = {
                             box: [],
                             offscreen: false
@@ -32250,7 +32699,7 @@ class Placement {
                     const placeVertical = () => {
                         const verticalTextBox = collisionArrays.verticalTextBox;
                         if (verticalTextBox)
-                            updateElevation(verticalTextBox);
+                            updateBoxData(verticalTextBox);
                         const wasPlaced = placed && placed.box && placed.box.length;
                         if (bucket.allowVerticalPlacement && !wasPlaced && symbolInstance.numVerticalGlyphVertices > 0 && verticalTextBox) {
                             return placeBoxForVariableAnchors(verticalTextBox, collisionArrays.verticalIconBox, ref_properties.WritingMode.vertical);
@@ -32292,7 +32741,7 @@ class Placement {
             }
             if (collisionArrays.iconBox) {
                 const placeIconFeature = iconBox => {
-                    updateElevation(iconBox);
+                    updateBoxData(iconBox);
                     const shiftPoint = hasIconTextFit && shift ? offsetShift(shift.x, shift.y, rotateWithMap, pitchWithMap, this.transform.angle) : new ref_properties.pointGeometry(0, 0);
                     const iconScale = bucket.getSymbolInstanceIconSize(partiallyEvaluatedIconSize, this.transform.zoom, symbolIndex);
                     return this.collisionIndex.placeCollisionBox(iconScale, iconBox, shiftPoint, iconAllowOverlap, textPixelRatio, posMatrix, collisionGroup.predicate);
@@ -32683,8 +33132,8 @@ class LayerPlacement {
     }
 }
 class PauseablePlacement {
-    constructor(transform, order, forceFullPlacement, showCollisionBoxes, fadeDuration, crossSourceCollisions, prevPlacement) {
-        this.placement = new Placement(transform, fadeDuration, crossSourceCollisions, prevPlacement);
+    constructor(transform, order, forceFullPlacement, showCollisionBoxes, fadeDuration, crossSourceCollisions, prevPlacement, fogState) {
+        this.placement = new Placement(transform, fadeDuration, crossSourceCollisions, prevPlacement, fogState);
         this._currentPlacementIndex = order.length - 1;
         this._forceFullPlacement = forceFullPlacement;
         this._showCollisionBoxes = showCollisionBoxes;
@@ -32927,7 +33376,8 @@ const supportedDiffOperations = ref_properties.pick(operations, [
     'setLight',
     'setTransition',
     'setGeoJSONSourceData',
-    'setTerrain'
+    'setTerrain',
+    'setFog'
 ]);
 const ignoredDiffOperations = ref_properties.pick(operations, [
     'setCenter',
@@ -32951,7 +33401,7 @@ class Style extends ref_properties.Evented {
         this.imageManager = new ImageManager();
         this.imageManager.setEventedParent(this);
         this.glyphManager = new ref_properties.GlyphManager(map._requestManager, options.localFontFamily ? ref_properties.LocalGlyphMode.all : options.localIdeographFontFamily ? ref_properties.LocalGlyphMode.ideographs : ref_properties.LocalGlyphMode.none, options.localFontFamily || options.localIdeographFontFamily);
-        this.lineAtlas = new LineAtlas(256, 512);
+        this.lineAtlas = new ref_properties.LineAtlas(256, 512);
         this.crossTileSymbolIndex = new CrossTileSymbolIndex();
         this._layers = {};
         this._num3DLayers = 0;
@@ -32966,6 +33416,7 @@ class Style extends ref_properties.Evented {
         this._availableImages = [];
         this._order = [];
         this._drapedFirstOrder = [];
+        this._markersNeedUpdate = false;
         this._resetUpdates();
         this.dispatcher.broadcast('setReferrer', ref_properties.getReferrer());
         const self = this;
@@ -33076,6 +33527,9 @@ class Style extends ref_properties.Evented {
         if (this.stylesheet.terrain) {
             this._createTerrain(this.stylesheet.terrain);
         }
+        if (this.stylesheet.fog) {
+            this._createFog(this.stylesheet.fog);
+        }
         this._updateDrapeFirstLayers();
         this.fire(new ref_properties.Event('data', { dataType: 'style' }));
         this.fire(new ref_properties.Event('style.load'));
@@ -33136,6 +33590,9 @@ class Style extends ref_properties.Evented {
         if (this.light && this.light.hasTransition()) {
             return true;
         }
+        if (this.fog && this.fog.hasTransition()) {
+            return true;
+        }
         for (const id in this._sourceCaches) {
             if (this._sourceCaches[id].hasTransition()) {
                 return true;
@@ -33188,6 +33645,9 @@ class Style extends ref_properties.Evented {
                 this._layers[id].updateTransitions(parameters);
             }
             this.light.updateTransitions(parameters);
+            if (this.fog) {
+                this.fog.updateTransitions(parameters);
+            }
             this._resetUpdates();
         }
         const sourcesUsedBefore = {};
@@ -33229,7 +33689,14 @@ class Style extends ref_properties.Evented {
         if (this.terrain) {
             this.terrain.recalculate(parameters);
         }
+        if (this.fog) {
+            this.fog.recalculate(parameters);
+        }
         this.z = parameters.zoom;
+        if (this._markersNeedUpdate) {
+            this._updateMarkersOpacity();
+            this._markersNeedUpdate = false;
+        }
         if (changed) {
             this.fire(new ref_properties.Event('data', { dataType: 'style' }));
         }
@@ -33679,6 +34146,7 @@ class Style extends ref_properties.Evented {
             metadata: this.stylesheet.metadata,
             light: this.stylesheet.light,
             terrain: this.stylesheet.terrain,
+            fog: this.stylesheet.fog,
             center: this.stylesheet.center,
             zoom: this.stylesheet.zoom,
             bearing: this.stylesheet.bearing,
@@ -33842,6 +34310,7 @@ class Style extends ref_properties.Evented {
             delete this.stylesheet.terrain;
             this.dispatcher.broadcast('enableTerrain', false);
             this._force3DLayerUpdate();
+            this._markersNeedUpdate = true;
             return;
         }
         if (typeof terrainOptions.source === 'object') {
@@ -33871,6 +34340,57 @@ class Style extends ref_properties.Evented {
             }
         }
         this._updateDrapeFirstLayers();
+        this._markersNeedUpdate = true;
+    }
+    _createFog(fogOptions) {
+        const fog = this.fog = new Fog(fogOptions);
+        this.stylesheet.fog = fogOptions;
+        const parameters = {
+            now: ref_properties.exported.now(),
+            transition: ref_properties.extend({ duration: 0 }, this.stylesheet.transition)
+        };
+        fog.updateTransitions(parameters);
+    }
+    _updateMarkersOpacity() {
+        if (this.map._markers.length === 0) {
+            return;
+        }
+        this.map._requestDomTask(() => {
+            for (const marker of this.map._markers) {
+                marker._evaluateOpacity();
+            }
+        });
+    }
+    getFog() {
+        return this.fog ? this.fog.get() : null;
+    }
+    setFog(fogOptions) {
+        this._checkLoaded();
+        if (!fogOptions) {
+            delete this.fog;
+            delete this.stylesheet.fog;
+            this._markersNeedUpdate = true;
+            return;
+        }
+        if (!this.fog) {
+            this._createFog(fogOptions);
+        } else {
+            const fog = this.fog;
+            const currSpec = fog.get();
+            for (const key in fogOptions) {
+                if (!deepEqual(fogOptions[key], currSpec[key])) {
+                    fog.set(fogOptions);
+                    this.stylesheet.fog = fogOptions;
+                    const parameters = {
+                        now: ref_properties.exported.now(),
+                        transition: ref_properties.extend({ duration: 0 }, this.stylesheet.transition)
+                    };
+                    fog.updateTransitions(parameters);
+                    break;
+                }
+            }
+        }
+        this._markersNeedUpdate = true;
     }
     _updateDrapeFirstLayers() {
         if (!this.map._optimizeForTerrain || !this.terrain) {
@@ -33986,7 +34506,7 @@ class Style extends ref_properties.Evented {
             this.fire(new ref_properties.Event('neworder'));
         }
         if (forceFullPlacement || !this.pauseablePlacement || this.pauseablePlacement.isDone() && !this.placement.stillRecent(ref_properties.exported.now(), transform.zoom)) {
-            this.pauseablePlacement = new PauseablePlacement(transform, this._order, forceFullPlacement, showCollisionBoxes, fadeDuration, crossSourceCollisions, this.placement);
+            this.pauseablePlacement = new PauseablePlacement(transform, this._order, forceFullPlacement, showCollisionBoxes, fadeDuration, crossSourceCollisions, this.placement, this.fog ? this.fog.state : null);
             this._layerOrderChanged = false;
         }
         if (this.pauseablePlacement.isDone()) {
@@ -34064,29 +34584,31 @@ Style.getSourceType = getType;
 Style.setSourceType = setType;
 Style.registerForPluginStateChange = ref_properties.registerForPluginStateChange;
 
-var preludeFrag = "#ifdef GL_ES\nprecision mediump float;\n#else\n#if !defined(lowp)\n#define lowp\n#endif\n#if !defined(mediump)\n#define mediump\n#endif\n#if !defined(highp)\n#define highp\n#endif\n#endif\nconst float PI=3.141592653589793;";
+var preludeCommon = "\n#define EPSILON 0.0000001\n#define PI 3.141592653589793\n#ifdef FOG\nuniform mediump vec4 u_fog_color;uniform mediump vec2 u_fog_range;uniform mediump float u_fog_horizon_blend;varying vec3 v_fog_pos;float fog_range(float depth) {return (depth-u_fog_range[0])/(u_fog_range[1]-u_fog_range[0]);}float fog_horizon_blending(vec3 camera_dir) {float t=max(0.0,camera_dir.z/u_fog_horizon_blend);return u_fog_color.a*exp(-3.0*t*t);}float fog_opacity(float t) {const float decay=6.0;float falloff=1.0-min(1.0,exp(-decay*t));falloff*=falloff*falloff;return u_fog_color.a*min(1.0,1.00747*falloff);}\n#endif";
 
-var preludeVert = "#ifdef GL_ES\nprecision highp float;\n#else\n#if !defined(lowp)\n#define lowp\n#endif\n#if !defined(mediump)\n#define mediump\n#endif\n#if !defined(highp)\n#define highp\n#endif\n#endif\nvec2 unpack_float(const float packedValue) {int packedIntValue=int(packedValue);int v0=packedIntValue/256;return vec2(v0,packedIntValue-v0*256);}vec2 unpack_opacity(const float packedOpacity) {int intOpacity=int(packedOpacity)/2;return vec2(float(intOpacity)/127.0,mod(packedOpacity,2.0));}vec4 decode_color(const vec2 encodedColor) {return vec4(\nunpack_float(encodedColor[0])/255.0,unpack_float(encodedColor[1])/255.0\n);}float unpack_mix_vec2(const vec2 packedValue,const float t) {return mix(packedValue[0],packedValue[1],t);}vec4 unpack_mix_color(const vec4 packedColors,const float t) {vec4 minColor=decode_color(vec2(packedColors[0],packedColors[1]));vec4 maxColor=decode_color(vec2(packedColors[2],packedColors[3]));return mix(minColor,maxColor,t);}vec2 get_pattern_pos(const vec2 pixel_coord_upper,const vec2 pixel_coord_lower,const vec2 pattern_size,const float tile_units_to_pixels,const vec2 pos) {vec2 offset=mod(mod(mod(pixel_coord_upper,pattern_size)*256.0,pattern_size)*256.0+pixel_coord_lower,pattern_size);return (tile_units_to_pixels*pos+offset)/pattern_size;}const float PI=3.141592653589793;const vec4 AWAY=vec4(-1000.0,-1000.0,-1000.0,1);//Normalized device coordinate that is not rendered.";
+var preludeFrag = "#ifdef GL_ES\nprecision mediump float;\n#else\n#if !defined(lowp)\n#define lowp\n#endif\n#if !defined(mediump)\n#define mediump\n#endif\n#if !defined(highp)\n#define highp\n#endif\n#endif\nhighp vec3 hash(highp vec2 p) {highp vec3 p3=fract(p.xyx*vec3(443.8975,397.2973,491.1871));p3+=dot(p3,p3.yxz+19.19);return fract((p3.xxy+p3.yzz)*p3.zyx);}vec3 dither(vec3 color,highp vec2 seed) {vec3 rnd=hash(seed)+hash(seed+0.59374)-0.5;return color+rnd/255.0;}";
 
-var backgroundFrag = "uniform vec4 u_color;uniform float u_opacity;void main() {gl_FragColor=u_color*u_opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var preludeVert = "#ifdef GL_ES\nprecision highp float;\n#else\n#if !defined(lowp)\n#define lowp\n#endif\n#if !defined(mediump)\n#define mediump\n#endif\n#if !defined(highp)\n#define highp\n#endif\n#endif\nvec2 unpack_float(const float packedValue) {int packedIntValue=int(packedValue);int v0=packedIntValue/256;return vec2(v0,packedIntValue-v0*256);}vec2 unpack_opacity(const float packedOpacity) {int intOpacity=int(packedOpacity)/2;return vec2(float(intOpacity)/127.0,mod(packedOpacity,2.0));}vec4 decode_color(const vec2 encodedColor) {return vec4(\nunpack_float(encodedColor[0])/255.0,unpack_float(encodedColor[1])/255.0\n);}float unpack_mix_vec2(const vec2 packedValue,const float t) {return mix(packedValue[0],packedValue[1],t);}vec4 unpack_mix_color(const vec4 packedColors,const float t) {vec4 minColor=decode_color(vec2(packedColors[0],packedColors[1]));vec4 maxColor=decode_color(vec2(packedColors[2],packedColors[3]));return mix(minColor,maxColor,t);}vec2 get_pattern_pos(const vec2 pixel_coord_upper,const vec2 pixel_coord_lower,const vec2 pattern_size,const float tile_units_to_pixels,const vec2 pos) {vec2 offset=mod(mod(mod(pixel_coord_upper,pattern_size)*256.0,pattern_size)*256.0+pixel_coord_lower,pattern_size);return (tile_units_to_pixels*pos+offset)/pattern_size;}const vec4 AWAY=vec4(-1000.0,-1000.0,-1000.0,1);//Normalized device coordinate that is not rendered.";
 
-var backgroundVert = "attribute vec2 a_pos;uniform mat4 u_matrix;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);}";
+var backgroundFrag = "uniform vec4 u_color;uniform float u_opacity;void main() {vec4 out_color=u_color;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*u_opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var backgroundPatternFrag = "uniform vec2 u_pattern_tl_a;uniform vec2 u_pattern_br_a;uniform vec2 u_pattern_tl_b;uniform vec2 u_pattern_br_b;uniform vec2 u_texsize;uniform float u_mix;uniform float u_opacity;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;void main() {vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(u_pattern_tl_a/u_texsize,u_pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(u_pattern_tl_b/u_texsize,u_pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);gl_FragColor=mix(color1,color2,u_mix)*u_opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var backgroundVert = "attribute vec2 a_pos;uniform mat4 u_matrix;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var backgroundPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pattern_size_a;uniform vec2 u_pattern_size_b;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform float u_scale_a;uniform float u_scale_b;uniform float u_tile_units_to_pixels;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,u_scale_a*u_pattern_size_a,u_tile_units_to_pixels,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,u_scale_b*u_pattern_size_b,u_tile_units_to_pixels,a_pos);}";
+var backgroundPatternFrag = "uniform vec2 u_pattern_tl_a;uniform vec2 u_pattern_br_a;uniform vec2 u_pattern_tl_b;uniform vec2 u_pattern_br_b;uniform vec2 u_texsize;uniform float u_mix;uniform float u_opacity;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;void main() {vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(u_pattern_tl_a/u_texsize,u_pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(u_pattern_tl_b/u_texsize,u_pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);vec4 out_color=mix(color1,color2,u_mix);\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*u_opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var circleFrag = "varying vec3 v_data;varying float v_visibility;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define mediump float radius\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define highp vec4 stroke_color\n#pragma mapbox: define mediump float stroke_width\n#pragma mapbox: define lowp float stroke_opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize mediump float radius\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize highp vec4 stroke_color\n#pragma mapbox: initialize mediump float stroke_width\n#pragma mapbox: initialize lowp float stroke_opacity\nvec2 extrude=v_data.xy;float extrude_length=length(extrude);lowp float antialiasblur=v_data.z;float antialiased_blur=-max(blur,antialiasblur);float opacity_t=smoothstep(0.0,antialiased_blur,extrude_length-1.0);float color_t=stroke_width < 0.01 ? 0.0 : smoothstep(\nantialiased_blur,0.0,extrude_length-radius/(radius+stroke_width)\n);gl_FragColor=v_visibility*opacity_t*mix(color*opacity,stroke_color*stroke_opacity,color_t);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var backgroundPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pattern_size_a;uniform vec2 u_pattern_size_b;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform float u_scale_a;uniform float u_scale_b;uniform float u_tile_units_to_pixels;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,u_scale_a*u_pattern_size_a,u_tile_units_to_pixels,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,u_scale_b*u_pattern_size_b,u_tile_units_to_pixels,a_pos);\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var circleVert = "#define NUM_VISIBILITY_RINGS 2\n#define INV_SQRT2 0.70710678\n#define ELEVATION_BIAS 0.0001\n#define NUM_SAMPLES_PER_RING 16\nuniform mat4 u_matrix;uniform vec2 u_extrude_scale;uniform lowp float u_device_pixel_ratio;uniform highp float u_camera_to_center_distance;attribute vec2 a_pos;varying vec3 v_data;varying float v_visibility;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define mediump float radius\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define highp vec4 stroke_color\n#pragma mapbox: define mediump float stroke_width\n#pragma mapbox: define lowp float stroke_opacity\nvec2 calc_offset(vec2 extrusion,float radius,float stroke_width, float view_scale) {return extrusion*(radius+stroke_width)*u_extrude_scale*view_scale;}float cantilevered_elevation(vec2 pos,float radius,float stroke_width,float view_scale) {vec2 c1=pos+calc_offset(vec2(-1,-1),radius,stroke_width,view_scale);vec2 c2=pos+calc_offset(vec2(1,-1),radius,stroke_width,view_scale);vec2 c3=pos+calc_offset(vec2(1,1),radius,stroke_width,view_scale);vec2 c4=pos+calc_offset(vec2(-1,1),radius,stroke_width,view_scale);float h1=elevation(c1)+ELEVATION_BIAS;float h2=elevation(c2)+ELEVATION_BIAS;float h3=elevation(c3)+ELEVATION_BIAS;float h4=elevation(c4)+ELEVATION_BIAS;return max(h4,max(h3,max(h1,h2)));}float circle_elevation(vec2 pos) {\n#if defined(TERRAIN)\nreturn elevation(pos)+ELEVATION_BIAS;\n#else\nreturn 0.0;\n#endif\n}vec4 project_vertex(vec2 extrusion,vec4 world_center,vec4 projected_center,float radius,float stroke_width, float view_scale) {vec2 sample_offset=calc_offset(extrusion,radius,stroke_width,view_scale);\n#ifdef PITCH_WITH_MAP\nreturn u_matrix*( world_center+vec4(sample_offset,0,0) );\n#else\nreturn projected_center+vec4(sample_offset,0,0);\n#endif\n}float get_sample_step() {\n#ifdef PITCH_WITH_MAP\nreturn 2.0*PI/float(NUM_SAMPLES_PER_RING);\n#else\nreturn PI/float(NUM_SAMPLES_PER_RING);\n#endif\n}void main(void) {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize mediump float radius\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize highp vec4 stroke_color\n#pragma mapbox: initialize mediump float stroke_width\n#pragma mapbox: initialize lowp float stroke_opacity\nvec2 extrude=vec2(mod(a_pos,2.0)*2.0-1.0);vec2 circle_center=floor(a_pos*0.5);float height=circle_elevation(circle_center);vec4 world_center=vec4(circle_center,height,1);vec4 projected_center=u_matrix*world_center;float view_scale=0.0;\n#ifdef PITCH_WITH_MAP\n#ifdef SCALE_WITH_MAP\nview_scale=1.0;\n#else\nview_scale=projected_center.w/u_camera_to_center_distance;\n#endif\n#else\n#ifdef SCALE_WITH_MAP\nview_scale=u_camera_to_center_distance;\n#else\nview_scale=projected_center.w;\n#endif\n#endif\ngl_Position=project_vertex(extrude,world_center,projected_center,radius,stroke_width,view_scale);float visibility=0.0;\n#ifdef TERRAIN\nfloat step=get_sample_step();\n#ifdef PITCH_WITH_MAP\nfloat cantilevered_height=cantilevered_elevation(circle_center,radius,stroke_width,view_scale);vec4 occlusion_world_center=vec4(circle_center,cantilevered_height,1);vec4 occlusion_projected_center=u_matrix*occlusion_world_center;\n#else\nvec4 occlusion_world_center=world_center;vec4 occlusion_projected_center=projected_center;\n#endif\nfor(int ring=0; ring < NUM_VISIBILITY_RINGS; ring++) {float scale=(float(ring)+1.0)/float(NUM_VISIBILITY_RINGS);for(int i=0; i < NUM_SAMPLES_PER_RING; i++) {vec2 extrusion=vec2(cos(step*float(i)),-sin(step*float(i)))*scale;vec4 frag_pos=project_vertex(extrusion,occlusion_world_center,occlusion_projected_center,radius,stroke_width,view_scale);visibility+=float(!isOccluded(frag_pos));}}visibility/=float(NUM_VISIBILITY_RINGS)*float(NUM_SAMPLES_PER_RING);\n#else\nvisibility=1.0;\n#endif\nv_visibility=visibility;lowp float antialiasblur=1.0/u_device_pixel_ratio/(radius+stroke_width);v_data=vec3(extrude.x,extrude.y,antialiasblur);}";
+var circleFrag = "varying vec3 v_data;varying float v_visibility;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define mediump float radius\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define highp vec4 stroke_color\n#pragma mapbox: define mediump float stroke_width\n#pragma mapbox: define lowp float stroke_opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize mediump float radius\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize highp vec4 stroke_color\n#pragma mapbox: initialize mediump float stroke_width\n#pragma mapbox: initialize lowp float stroke_opacity\nvec2 extrude=v_data.xy;float extrude_length=length(extrude);lowp float antialiasblur=v_data.z;float antialiased_blur=-max(blur,antialiasblur);float opacity_t=smoothstep(0.0,antialiased_blur,extrude_length-1.0);float color_t=stroke_width < 0.01 ? 0.0 : smoothstep(\nantialiased_blur,0.0,extrude_length-radius/(radius+stroke_width)\n);vec4 out_color=mix(color*opacity,stroke_color*stroke_opacity,color_t);\n#ifdef FOG\nout_color=fog_apply_premultiplied(out_color,v_fog_pos);\n#endif\ngl_FragColor=out_color*(v_visibility*opacity_t);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+
+var circleVert = "#define NUM_VISIBILITY_RINGS 2\n#define INV_SQRT2 0.70710678\n#define ELEVATION_BIAS 0.0001\n#define NUM_SAMPLES_PER_RING 16\nuniform mat4 u_matrix;uniform vec2 u_extrude_scale;uniform lowp float u_device_pixel_ratio;uniform highp float u_camera_to_center_distance;attribute vec2 a_pos;varying vec3 v_data;varying float v_visibility;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define mediump float radius\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define highp vec4 stroke_color\n#pragma mapbox: define mediump float stroke_width\n#pragma mapbox: define lowp float stroke_opacity\nvec2 calc_offset(vec2 extrusion,float radius,float stroke_width, float view_scale) {return extrusion*(radius+stroke_width)*u_extrude_scale*view_scale;}float cantilevered_elevation(vec2 pos,float radius,float stroke_width,float view_scale) {vec2 c1=pos+calc_offset(vec2(-1,-1),radius,stroke_width,view_scale);vec2 c2=pos+calc_offset(vec2(1,-1),radius,stroke_width,view_scale);vec2 c3=pos+calc_offset(vec2(1,1),radius,stroke_width,view_scale);vec2 c4=pos+calc_offset(vec2(-1,1),radius,stroke_width,view_scale);float h1=elevation(c1)+ELEVATION_BIAS;float h2=elevation(c2)+ELEVATION_BIAS;float h3=elevation(c3)+ELEVATION_BIAS;float h4=elevation(c4)+ELEVATION_BIAS;return max(h4,max(h3,max(h1,h2)));}float circle_elevation(vec2 pos) {\n#if defined(TERRAIN)\nreturn elevation(pos)+ELEVATION_BIAS;\n#else\nreturn 0.0;\n#endif\n}vec4 project_vertex(vec2 extrusion,vec4 world_center,vec4 projected_center,float radius,float stroke_width, float view_scale) {vec2 sample_offset=calc_offset(extrusion,radius,stroke_width,view_scale);\n#ifdef PITCH_WITH_MAP\nreturn u_matrix*( world_center+vec4(sample_offset,0,0) );\n#else\nreturn projected_center+vec4(sample_offset,0,0);\n#endif\n}float get_sample_step() {\n#ifdef PITCH_WITH_MAP\nreturn 2.0*PI/float(NUM_SAMPLES_PER_RING);\n#else\nreturn PI/float(NUM_SAMPLES_PER_RING);\n#endif\n}void main(void) {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize mediump float radius\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize highp vec4 stroke_color\n#pragma mapbox: initialize mediump float stroke_width\n#pragma mapbox: initialize lowp float stroke_opacity\nvec2 extrude=vec2(mod(a_pos,2.0)*2.0-1.0);vec2 circle_center=floor(a_pos*0.5);float height=circle_elevation(circle_center);vec4 world_center=vec4(circle_center,height,1);vec4 projected_center=u_matrix*world_center;float view_scale=0.0;\n#ifdef PITCH_WITH_MAP\n#ifdef SCALE_WITH_MAP\nview_scale=1.0;\n#else\nview_scale=projected_center.w/u_camera_to_center_distance;\n#endif\n#else\n#ifdef SCALE_WITH_MAP\nview_scale=u_camera_to_center_distance;\n#else\nview_scale=projected_center.w;\n#endif\n#endif\ngl_Position=project_vertex(extrude,world_center,projected_center,radius,stroke_width,view_scale);float visibility=0.0;\n#ifdef TERRAIN\nfloat step=get_sample_step();\n#ifdef PITCH_WITH_MAP\nfloat cantilevered_height=cantilevered_elevation(circle_center,radius,stroke_width,view_scale);vec4 occlusion_world_center=vec4(circle_center,cantilevered_height,1);vec4 occlusion_projected_center=u_matrix*occlusion_world_center;\n#else\nvec4 occlusion_world_center=world_center;vec4 occlusion_projected_center=projected_center;\n#endif\nfor(int ring=0; ring < NUM_VISIBILITY_RINGS; ring++) {float scale=(float(ring)+1.0)/float(NUM_VISIBILITY_RINGS);for(int i=0; i < NUM_SAMPLES_PER_RING; i++) {vec2 extrusion=vec2(cos(step*float(i)),-sin(step*float(i)))*scale;vec4 frag_pos=project_vertex(extrusion,occlusion_world_center,occlusion_projected_center,radius,stroke_width,view_scale);visibility+=float(!isOccluded(frag_pos));}}visibility/=float(NUM_VISIBILITY_RINGS)*float(NUM_SAMPLES_PER_RING);\n#else\nvisibility=1.0;\n#endif\nv_visibility=visibility;lowp float antialiasblur=1.0/u_device_pixel_ratio/(radius+stroke_width);v_data=vec3(extrude.x,extrude.y,antialiasblur);\n#ifdef FOG\nv_fog_pos=fog_position(world_center.xyz);\n#endif\n}";
 
 var clippingMaskFrag = "void main() {gl_FragColor=vec4(1.0);}";
 
 var clippingMaskVert = "attribute vec2 a_pos;uniform mat4 u_matrix;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);}";
 
-var heatmapFrag = "uniform highp float u_intensity;varying vec2 v_extrude;\n#pragma mapbox: define highp float weight\n#define GAUSS_COEF 0.3989422804014327\nvoid main() {\n#pragma mapbox: initialize highp float weight\nfloat d=-0.5*3.0*3.0*dot(v_extrude,v_extrude);float val=weight*u_intensity*GAUSS_COEF*exp(d);gl_FragColor=vec4(val,1.0,1.0,1.0);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var heatmapFrag = "uniform highp float u_intensity;varying vec2 v_extrude;\n#pragma mapbox: define highp float weight\n#define GAUSS_COEF 0.3989422804014327\nvoid main() {\n#pragma mapbox: initialize highp float weight\nfloat d=-0.5*3.0*3.0*dot(v_extrude,v_extrude);float val=weight*u_intensity*GAUSS_COEF*exp(d);gl_FragColor=vec4(val,1.0,1.0,1.0);\n#ifdef FOG\ngl_FragColor.r*=pow(1.0-fog_opacity(v_fog_pos),2.0);\n#endif\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var heatmapVert = "uniform mat4 u_matrix;uniform float u_extrude_scale;uniform float u_opacity;uniform float u_intensity;attribute vec2 a_pos;varying vec2 v_extrude;\n#pragma mapbox: define highp float weight\n#pragma mapbox: define mediump float radius\nconst highp float ZERO=1.0/255.0/16.0;\n#define GAUSS_COEF 0.3989422804014327\nvoid main(void) {\n#pragma mapbox: initialize highp float weight\n#pragma mapbox: initialize mediump float radius\nvec2 unscaled_extrude=vec2(mod(a_pos,2.0)*2.0-1.0);float S=sqrt(-2.0*log(ZERO/weight/u_intensity/GAUSS_COEF))/3.0;v_extrude=S*unscaled_extrude;vec2 extrude=v_extrude*radius*u_extrude_scale;vec4 pos=vec4(floor(a_pos*0.5)+extrude,elevation(floor(a_pos*0.5)),1);gl_Position=u_matrix*pos;}";
+var heatmapVert = "uniform mat4 u_matrix;uniform float u_extrude_scale;uniform float u_opacity;uniform float u_intensity;attribute vec2 a_pos;varying vec2 v_extrude;\n#pragma mapbox: define highp float weight\n#pragma mapbox: define mediump float radius\nconst highp float ZERO=1.0/255.0/16.0;\n#define GAUSS_COEF 0.3989422804014327\nvoid main(void) {\n#pragma mapbox: initialize highp float weight\n#pragma mapbox: initialize mediump float radius\nvec2 unscaled_extrude=vec2(mod(a_pos,2.0)*2.0-1.0);float S=sqrt(-2.0*log(ZERO/weight/u_intensity/GAUSS_COEF))/3.0;v_extrude=S*unscaled_extrude;vec2 extrude=v_extrude*radius*u_extrude_scale;vec3 pos=vec3(floor(a_pos*0.5)+extrude,elevation(floor(a_pos*0.5)));gl_Position=u_matrix*vec4(pos,1);\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
 var heatmapTextureFrag = "uniform sampler2D u_image;uniform sampler2D u_color_ramp;uniform float u_opacity;varying vec2 v_pos;void main() {float t=texture2D(u_image,v_pos).r;vec4 color=texture2D(u_color_ramp,vec2(t,0.5));gl_FragColor=color*u_opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(0.0);\n#endif\n}";
 
@@ -34104,57 +34626,57 @@ var debugFrag = "uniform highp vec4 u_color;uniform sampler2D u_overlay;varying 
 
 var debugVert = "attribute vec2 a_pos;varying vec2 v_uv;uniform mat4 u_matrix;uniform float u_overlay_scale;void main() {float h=elevation(a_pos);v_uv=a_pos/8192.0;gl_Position=u_matrix*vec4(a_pos*u_overlay_scale,h,1);}";
 
-var fillFrag = "#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float opacity\ngl_FragColor=color*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillFrag = "#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float opacity\nvec4 out_color=color;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillVert = "attribute vec2 a_pos;uniform mat4 u_matrix;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float opacity\ngl_Position=u_matrix*vec4(a_pos,0,1);}";
+var fillVert = "attribute vec2 a_pos;uniform mat4 u_matrix;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float opacity\ngl_Position=u_matrix*vec4(a_pos,0,1);\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var fillOutlineFrag = "varying vec2 v_pos;\n#pragma mapbox: define highp vec4 outline_color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 outline_color\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_pos*gl_FragCoord.w-gl_FragCoord.xy);float alpha=1.0-smoothstep(0.0,1.0,dist);gl_FragColor=outline_color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillOutlineFrag = "varying vec2 v_pos;\n#pragma mapbox: define highp vec4 outline_color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 outline_color\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_pos-gl_FragCoord.xy);float alpha=1.0-smoothstep(0.0,1.0,dist);vec4 out_color=outline_color;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillOutlineVert = "attribute vec2 a_pos;uniform mat4 u_matrix;uniform vec2 u_world;varying vec2 v_pos;\n#pragma mapbox: define highp vec4 outline_color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 outline_color\n#pragma mapbox: initialize lowp float opacity\ngl_Position=u_matrix*vec4(a_pos,0,1);v_pos=(gl_Position.xy/gl_Position.w+1.0)/2.0*u_world*gl_Position.w;}";
+var fillOutlineVert = "attribute vec2 a_pos;uniform mat4 u_matrix;uniform vec2 u_world;varying vec2 v_pos;\n#pragma mapbox: define highp vec4 outline_color\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 outline_color\n#pragma mapbox: initialize lowp float opacity\ngl_Position=u_matrix*vec4(a_pos,0,1);v_pos=(gl_Position.xy/gl_Position.w+1.0)/2.0*u_world;\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var fillOutlinePatternFrag = "uniform vec2 u_texsize;uniform sampler2D u_image;uniform float u_fade;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec2 v_pos;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);float dist=length(v_pos-gl_FragCoord.xy);float alpha=1.0-smoothstep(0.0,1.0,dist);gl_FragColor=mix(color1,color2,u_fade)*alpha*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillOutlinePatternFrag = "uniform vec2 u_texsize;uniform sampler2D u_image;uniform float u_fade;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec2 v_pos;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);float dist=length(v_pos-gl_FragCoord.xy);float alpha=1.0-smoothstep(0.0,1.0,dist);vec4 out_color=mix(color1,color2,u_fade);\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillOutlinePatternVert = "uniform mat4 u_matrix;uniform vec2 u_world;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform vec3 u_scale;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec2 v_pos;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;gl_Position=u_matrix*vec4(a_pos,0,1);vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileRatio,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileRatio,a_pos);v_pos=(gl_Position.xy/gl_Position.w+1.0)/2.0*u_world;}";
+var fillOutlinePatternVert = "uniform mat4 u_matrix;uniform vec2 u_world;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform vec3 u_scale;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec2 v_pos;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;gl_Position=u_matrix*vec4(a_pos,0,1);vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileRatio,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileRatio,a_pos);v_pos=(gl_Position.xy/gl_Position.w+1.0)/2.0*u_world;\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var fillPatternFrag = "uniform vec2 u_texsize;uniform float u_fade;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);gl_FragColor=mix(color1,color2,u_fade)*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillPatternFrag = "uniform vec2 u_texsize;uniform float u_fade;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);vec4 out_color=mix(color1,color2,u_fade);\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform vec3 u_scale;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileZoomRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;gl_Position=u_matrix*vec4(a_pos,0,1);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileZoomRatio,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileZoomRatio,a_pos);}";
+var fillPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform vec3 u_scale;attribute vec2 a_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileZoomRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;gl_Position=u_matrix*vec4(a_pos,0,1);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileZoomRatio,a_pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileZoomRatio,a_pos);\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var fillExtrusionFrag = "varying vec4 v_color;void main() {gl_FragColor=v_color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillExtrusionFrag = "varying vec4 v_color;void main() {vec4 color=v_color;\n#ifdef FOG\ncolor=fog_dither(fog_apply_premultiplied(color,v_fog_pos));\n#endif\ngl_FragColor=color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillExtrusionVert = "uniform mat4 u_matrix;uniform vec3 u_lightcolor;uniform lowp vec3 u_lightpos;uniform lowp float u_lightintensity;uniform float u_vertical_gradient;uniform lowp float u_opacity;attribute vec4 a_pos_normal_ed;attribute vec2 a_centroid_pos;varying vec4 v_color;\n#pragma mapbox: define highp float base\n#pragma mapbox: define highp float height\n#pragma mapbox: define highp vec4 color\nvoid main() {\n#pragma mapbox: initialize highp float base\n#pragma mapbox: initialize highp float height\n#pragma mapbox: initialize highp vec4 color\nvec3 pos_nx=floor(a_pos_normal_ed.xyz*0.5);mediump vec3 top_up_ny=a_pos_normal_ed.xyz-2.0*pos_nx;float x_normal=pos_nx.z/8192.0;vec3 normal=top_up_ny.y==1.0 ? vec3(0.0,0.0,1.0) : normalize(vec3(x_normal,(2.0*top_up_ny.z-1.0)*(1.0-abs(x_normal)),0.0));base=max(0.0,base);height=max(0.0,height);float t=top_up_ny.x;\n#ifdef TERRAIN\nvec2 centroid_pos=a_centroid_pos;bool flat_roof=centroid_pos.x !=0.0;float ele=elevation(pos_nx.xy);float hidden=float(centroid_pos.x==0.0 && centroid_pos.y==1.0);float c_ele=flat_roof ? centroid_pos.y==0.0 ? elevationFromUint16(centroid_pos.x) : flatElevation(centroid_pos) : ele;float h=flat_roof ? max(c_ele+height,ele+base+2.0) : ele+(t > 0.0 ? height : base==0.0 ?-5.0 : base);gl_Position=mix(u_matrix*vec4(pos_nx.xy,h,1),AWAY,hidden);\n#else\ngl_Position=u_matrix*vec4(pos_nx.xy,t > 0.0 ? height : base,1);\n#endif\nfloat colorvalue=color.r*0.2126+color.g*0.7152+color.b*0.0722;v_color=vec4(0.0,0.0,0.0,1.0);vec4 ambientlight=vec4(0.03,0.03,0.03,1.0);color+=ambientlight;float directional=clamp(dot(normal,u_lightpos),0.0,1.0);directional=mix((1.0-u_lightintensity),max((1.0-colorvalue+u_lightintensity),1.0),directional);if (normal.y !=0.0) {directional*=(\n(1.0-u_vertical_gradient)+(u_vertical_gradient*clamp((t+base)*pow(height/150.0,0.5),mix(0.7,0.98,1.0-u_lightintensity),1.0)));}v_color.r+=clamp(color.r*directional*u_lightcolor.r,mix(0.0,0.3,1.0-u_lightcolor.r),1.0);v_color.g+=clamp(color.g*directional*u_lightcolor.g,mix(0.0,0.3,1.0-u_lightcolor.g),1.0);v_color.b+=clamp(color.b*directional*u_lightcolor.b,mix(0.0,0.3,1.0-u_lightcolor.b),1.0);v_color*=u_opacity;}";
+var fillExtrusionVert = "uniform mat4 u_matrix;uniform vec3 u_lightcolor;uniform lowp vec3 u_lightpos;uniform lowp float u_lightintensity;uniform float u_vertical_gradient;uniform lowp float u_opacity;attribute vec4 a_pos_normal_ed;attribute vec2 a_centroid_pos;varying vec4 v_color;\n#pragma mapbox: define highp float base\n#pragma mapbox: define highp float height\n#pragma mapbox: define highp vec4 color\nvoid main() {\n#pragma mapbox: initialize highp float base\n#pragma mapbox: initialize highp float height\n#pragma mapbox: initialize highp vec4 color\nvec3 pos_nx=floor(a_pos_normal_ed.xyz*0.5);mediump vec3 top_up_ny=a_pos_normal_ed.xyz-2.0*pos_nx;float x_normal=pos_nx.z/8192.0;vec3 normal=top_up_ny.y==1.0 ? vec3(0.0,0.0,1.0) : normalize(vec3(x_normal,(2.0*top_up_ny.z-1.0)*(1.0-abs(x_normal)),0.0));base=max(0.0,base);height=max(0.0,height);float t=top_up_ny.x;\n#ifdef TERRAIN\nvec2 centroid_pos=a_centroid_pos;bool flat_roof=centroid_pos.x !=0.0;float ele=elevation(pos_nx.xy);float hidden=float(centroid_pos.x==0.0 && centroid_pos.y==1.0);float c_ele=flat_roof ? centroid_pos.y==0.0 ? elevationFromUint16(centroid_pos.x) : flatElevation(centroid_pos) : ele;float h=flat_roof ? max(c_ele+height,ele+base+2.0) : ele+(t > 0.0 ? height : base==0.0 ?-5.0 : base);vec3 pos=vec3(pos_nx.xy,h);gl_Position=mix(u_matrix*vec4(pos,1),AWAY,hidden);\n#else\nvec3 pos=vec3(pos_nx.xy,t > 0.0 ? height : base);gl_Position=u_matrix*vec4(pos,1);\n#endif\nfloat colorvalue=color.r*0.2126+color.g*0.7152+color.b*0.0722;v_color=vec4(0.0,0.0,0.0,1.0);vec4 ambientlight=vec4(0.03,0.03,0.03,1.0);color+=ambientlight;float directional=clamp(dot(normal,u_lightpos),0.0,1.0);directional=mix((1.0-u_lightintensity),max((1.0-colorvalue+u_lightintensity),1.0),directional);if (normal.y !=0.0) {directional*=(\n(1.0-u_vertical_gradient)+(u_vertical_gradient*clamp((t+base)*pow(height/150.0,0.5),mix(0.7,0.98,1.0-u_lightintensity),1.0)));}v_color.rgb+=clamp(color.rgb*directional*u_lightcolor,mix(vec3(0.0),vec3(0.3),1.0-u_lightcolor),vec3(1.0));v_color*=u_opacity;\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
-var fillExtrusionPatternFrag = "uniform vec2 u_texsize;uniform float u_fade;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec4 v_lighting;\n#pragma mapbox: define lowp float base\n#pragma mapbox: define lowp float height\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float base\n#pragma mapbox: initialize lowp float height\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);vec4 mixedColor=mix(color1,color2,u_fade);gl_FragColor=mixedColor*v_lighting;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var fillExtrusionPatternFrag = "uniform vec2 u_texsize;uniform float u_fade;uniform sampler2D u_image;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec4 v_lighting;\n#pragma mapbox: define lowp float base\n#pragma mapbox: define lowp float height\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float base\n#pragma mapbox: initialize lowp float height\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;vec2 imagecoord=mod(v_pos_a,1.0);vec2 pos=mix(pattern_tl_a/u_texsize,pattern_br_a/u_texsize,imagecoord);vec4 color1=texture2D(u_image,pos);vec2 imagecoord_b=mod(v_pos_b,1.0);vec2 pos2=mix(pattern_tl_b/u_texsize,pattern_br_b/u_texsize,imagecoord_b);vec4 color2=texture2D(u_image,pos2);vec4 out_color=mix(color1,color2,u_fade);out_color=out_color*v_lighting;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var fillExtrusionPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform float u_height_factor;uniform vec3 u_scale;uniform float u_vertical_gradient;uniform lowp float u_opacity;uniform vec3 u_lightcolor;uniform lowp vec3 u_lightpos;uniform lowp float u_lightintensity;attribute vec4 a_pos_normal_ed;attribute vec2 a_centroid_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec4 v_lighting;\n#pragma mapbox: define lowp float base\n#pragma mapbox: define lowp float height\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float base\n#pragma mapbox: initialize lowp float height\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec3 pos_nx=floor(a_pos_normal_ed.xyz*0.5);mediump vec3 top_up_ny=a_pos_normal_ed.xyz-2.0*pos_nx;float x_normal=pos_nx.z/8192.0;vec3 normal=top_up_ny.y==1.0 ? vec3(0.0,0.0,1.0) : normalize(vec3(x_normal,(2.0*top_up_ny.z-1.0)*(1.0-abs(x_normal)),0.0));float edgedistance=a_pos_normal_ed.w;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;base=max(0.0,base);height=max(0.0,height);float t=top_up_ny.x;float z=t > 0.0 ? height : base;\n#ifdef TERRAIN\nvec2 centroid_pos=a_centroid_pos;bool flat_roof=centroid_pos.x !=0.0;float ele=elevation(pos_nx.xy);float hidden=float(centroid_pos.x==0.0 && centroid_pos.y==1.0);float c_ele=flat_roof ? centroid_pos.y==0.0 ? elevationFromUint16(centroid_pos.x) : flatElevation(centroid_pos) : ele;float h=flat_roof ? max(c_ele+height,ele+base+2.0) : ele+(t > 0.0 ? height : base==0.0 ?-5.0 : base);gl_Position=mix(u_matrix*vec4(pos_nx.xy,h,1),AWAY,hidden);\n#else\ngl_Position=u_matrix*vec4(pos_nx.xy,z,1);\n#endif\nvec2 pos=normal.z==1.0\n? pos_nx.xy\n: vec2(edgedistance,z*u_height_factor);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileRatio,pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileRatio,pos);v_lighting=vec4(0.0,0.0,0.0,1.0);float directional=clamp(dot(normal,u_lightpos),0.0,1.0);directional=mix((1.0-u_lightintensity),max((0.5+u_lightintensity),1.0),directional);if (normal.y !=0.0) {directional*=(\n(1.0-u_vertical_gradient)+(u_vertical_gradient*clamp((t+base)*pow(height/150.0,0.5),mix(0.7,0.98,1.0-u_lightintensity),1.0)));}v_lighting.rgb+=clamp(directional*u_lightcolor,mix(vec3(0.0),vec3(0.3),1.0-u_lightcolor),vec3(1.0));v_lighting*=u_opacity;}";
+var fillExtrusionPatternVert = "uniform mat4 u_matrix;uniform vec2 u_pixel_coord_upper;uniform vec2 u_pixel_coord_lower;uniform float u_height_factor;uniform vec3 u_scale;uniform float u_vertical_gradient;uniform lowp float u_opacity;uniform vec3 u_lightcolor;uniform lowp vec3 u_lightpos;uniform lowp float u_lightintensity;attribute vec4 a_pos_normal_ed;attribute vec2 a_centroid_pos;varying vec2 v_pos_a;varying vec2 v_pos_b;varying vec4 v_lighting;\n#pragma mapbox: define lowp float base\n#pragma mapbox: define lowp float height\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float base\n#pragma mapbox: initialize lowp float height\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec3 pos_nx=floor(a_pos_normal_ed.xyz*0.5);mediump vec3 top_up_ny=a_pos_normal_ed.xyz-2.0*pos_nx;float x_normal=pos_nx.z/8192.0;vec3 normal=top_up_ny.y==1.0 ? vec3(0.0,0.0,1.0) : normalize(vec3(x_normal,(2.0*top_up_ny.z-1.0)*(1.0-abs(x_normal)),0.0));float edgedistance=a_pos_normal_ed.w;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;base=max(0.0,base);height=max(0.0,height);float t=top_up_ny.x;float z=t > 0.0 ? height : base;\n#ifdef TERRAIN\nvec2 centroid_pos=a_centroid_pos;bool flat_roof=centroid_pos.x !=0.0;float ele=elevation(pos_nx.xy);float hidden=float(centroid_pos.x==0.0 && centroid_pos.y==1.0);float c_ele=flat_roof ? centroid_pos.y==0.0 ? elevationFromUint16(centroid_pos.x) : flatElevation(centroid_pos) : ele;float h=flat_roof ? max(c_ele+height,ele+base+2.0) : ele+(t > 0.0 ? height : base==0.0 ?-5.0 : base);vec3 p=vec3(pos_nx.xy,h);gl_Position=mix(u_matrix*vec4(p,1),AWAY,hidden);\n#else\nvec3 p=vec3(pos_nx.xy,z);gl_Position=u_matrix*vec4(p,1);\n#endif\nvec2 pos=normal.z==1.0\n? pos_nx.xy\n: vec2(edgedistance,z*u_height_factor);v_pos_a=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,fromScale*display_size_a,tileRatio,pos);v_pos_b=get_pattern_pos(u_pixel_coord_upper,u_pixel_coord_lower,toScale*display_size_b,tileRatio,pos);v_lighting=vec4(0.0,0.0,0.0,1.0);float directional=clamp(dot(normal,u_lightpos),0.0,1.0);directional=mix((1.0-u_lightintensity),max((0.5+u_lightintensity),1.0),directional);if (normal.y !=0.0) {directional*=(\n(1.0-u_vertical_gradient)+(u_vertical_gradient*clamp((t+base)*pow(height/150.0,0.5),mix(0.7,0.98,1.0-u_lightintensity),1.0)));}v_lighting.rgb+=clamp(directional*u_lightcolor,mix(vec3(0.0),vec3(0.3),1.0-u_lightcolor),vec3(1.0));v_lighting*=u_opacity;\n#ifdef FOG\nv_fog_pos=fog_position(p);\n#endif\n}";
 
 var hillshadePrepareFrag = "#ifdef GL_ES\nprecision highp float;\n#endif\nuniform sampler2D u_image;varying vec2 v_pos;uniform vec2 u_dimension;uniform float u_zoom;uniform vec4 u_unpack;float getElevation(vec2 coord,float bias) {vec4 data=texture2D(u_image,coord)*255.0;data.a=-1.0;return dot(data,u_unpack)/4.0;}void main() {vec2 epsilon=1.0/u_dimension;float a=getElevation(v_pos+vec2(-epsilon.x,-epsilon.y),0.0);float b=getElevation(v_pos+vec2(0,-epsilon.y),0.0);float c=getElevation(v_pos+vec2(epsilon.x,-epsilon.y),0.0);float d=getElevation(v_pos+vec2(-epsilon.x,0),0.0);float e=getElevation(v_pos,0.0);float f=getElevation(v_pos+vec2(epsilon.x,0),0.0);float g=getElevation(v_pos+vec2(-epsilon.x,epsilon.y),0.0);float h=getElevation(v_pos+vec2(0,epsilon.y),0.0);float i=getElevation(v_pos+vec2(epsilon.x,epsilon.y),0.0);float exaggerationFactor=u_zoom < 2.0 ? 0.4 : u_zoom < 4.5 ? 0.35 : 0.3;float exaggeration=u_zoom < 15.0 ? (u_zoom-15.0)*exaggerationFactor : 0.0;vec2 deriv=vec2(\n(c+f+f+i)-(a+d+d+g),(g+h+h+i)-(a+b+b+c)\n)/pow(2.0,exaggeration+(19.2562-u_zoom));gl_FragColor=clamp(vec4(\nderiv.x/2.0+0.5,deriv.y/2.0+0.5,1.0,1.0),0.0,1.0);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
 var hillshadePrepareVert = "uniform mat4 u_matrix;uniform vec2 u_dimension;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);highp vec2 epsilon=1.0/u_dimension;float scale=(u_dimension.x-2.0)/u_dimension.x;v_pos=(a_texture_pos/8192.0)*scale+epsilon;}";
 
-var hillshadeFrag = "uniform sampler2D u_image;varying vec2 v_pos;uniform vec2 u_latrange;uniform vec2 u_light;uniform vec4 u_shadow;uniform vec4 u_highlight;uniform vec4 u_accent;void main() {vec4 pixel=texture2D(u_image,v_pos);vec2 deriv=((pixel.rg*2.0)-1.0);float scaleFactor=cos(radians((u_latrange[0]-u_latrange[1])*(1.0-v_pos.y)+u_latrange[1]));float slope=atan(1.25*length(deriv)/scaleFactor);float aspect=deriv.x !=0.0 ? atan(deriv.y,-deriv.x) : PI/2.0*(deriv.y > 0.0 ? 1.0 :-1.0);float intensity=u_light.x;float azimuth=u_light.y+PI;float base=1.875-intensity*1.75;float maxValue=0.5*PI;float scaledSlope=intensity !=0.5 ? ((pow(base,slope)-1.0)/(pow(base,maxValue)-1.0))*maxValue : slope;float accent=cos(scaledSlope);vec4 accent_color=(1.0-accent)*u_accent*clamp(intensity*2.0,0.0,1.0);float shade=abs(mod((aspect+azimuth)/PI+0.5,2.0)-1.0);vec4 shade_color=mix(u_shadow,u_highlight,shade)*sin(scaledSlope)*clamp(intensity*2.0,0.0,1.0);gl_FragColor=accent_color*(1.0-shade_color.a)+shade_color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var hillshadeFrag = "uniform sampler2D u_image;varying vec2 v_pos;uniform vec2 u_latrange;uniform vec2 u_light;uniform vec4 u_shadow;uniform vec4 u_highlight;uniform vec4 u_accent;void main() {vec4 pixel=texture2D(u_image,v_pos);vec2 deriv=((pixel.rg*2.0)-1.0);float scaleFactor=cos(radians((u_latrange[0]-u_latrange[1])*(1.0-v_pos.y)+u_latrange[1]));float slope=atan(1.25*length(deriv)/scaleFactor);float aspect=deriv.x !=0.0 ? atan(deriv.y,-deriv.x) : PI/2.0*(deriv.y > 0.0 ? 1.0 :-1.0);float intensity=u_light.x;float azimuth=u_light.y+PI;float base=1.875-intensity*1.75;float maxValue=0.5*PI;float scaledSlope=intensity !=0.5 ? ((pow(base,slope)-1.0)/(pow(base,maxValue)-1.0))*maxValue : slope;float accent=cos(scaledSlope);vec4 accent_color=(1.0-accent)*u_accent*clamp(intensity*2.0,0.0,1.0);float shade=abs(mod((aspect+azimuth)/PI+0.5,2.0)-1.0);vec4 shade_color=mix(u_shadow,u_highlight,shade)*sin(scaledSlope)*clamp(intensity*2.0,0.0,1.0);gl_FragColor=accent_color*(1.0-shade_color.a)+shade_color;\n#ifdef FOG\ngl_FragColor=fog_dither(fog_apply_premultiplied(gl_FragColor,v_fog_pos));\n#endif\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var hillshadeVert = "uniform mat4 u_matrix;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos=a_texture_pos/8192.0;}";
+var hillshadeVert = "uniform mat4 u_matrix;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos=a_texture_pos/8192.0;\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
-var lineFrag = "uniform lowp float u_device_pixel_ratio;varying vec2 v_width2;varying vec2 v_normal;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);gl_FragColor=color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var lineFrag = "uniform lowp float u_device_pixel_ratio;varying vec2 v_width2;varying vec2 v_normal;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);vec4 out_color=color;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var lineVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform vec2 u_units_to_pixels;uniform lowp float u_device_pixel_ratio;varying vec2 v_normal;varying vec2 v_width2;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_width2=vec2(outset,inset);}";
+var lineVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform vec2 u_units_to_pixels;uniform lowp float u_device_pixel_ratio;varying vec2 v_normal;varying vec2 v_width2;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_width2=vec2(outset,inset);\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
-var lineGradientFrag = "uniform lowp float u_device_pixel_ratio;uniform sampler2D u_image;varying vec2 v_width2;varying vec2 v_normal;varying float v_gamma_scale;varying highp vec2 v_uv;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);vec4 color=texture2D(u_image,v_uv);gl_FragColor=color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var lineGradientFrag = "uniform lowp float u_device_pixel_ratio;uniform sampler2D u_image;varying vec2 v_width2;varying vec2 v_normal;varying float v_gamma_scale;varying highp vec2 v_uv;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);vec4 color=texture2D(u_image,v_uv);\n#ifdef FOG\ncolor=fog_dither(fog_apply_premultiplied(color,v_fog_pos));\n#endif\ngl_FragColor=color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var lineGradientVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_uv_x;attribute float a_split_index;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;uniform vec2 u_units_to_pixels;uniform float u_image_height;varying vec2 v_normal;varying vec2 v_width2;varying float v_gamma_scale;varying highp vec2 v_uv;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;highp float texel_height=1.0/u_image_height;highp float half_texel_height=0.5*texel_height;v_uv=vec2(a_uv_x,a_split_index*texel_height-half_texel_height);vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_width2=vec2(outset,inset);}";
+var lineGradientVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_uv_x;attribute float a_split_index;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;uniform vec2 u_units_to_pixels;uniform float u_image_height;varying vec2 v_normal;varying vec2 v_width2;varying float v_gamma_scale;varying highp vec2 v_uv;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;highp float texel_height=1.0/u_image_height;highp float half_texel_height=0.5*texel_height;v_uv=vec2(a_uv_x,a_split_index*texel_height-half_texel_height);vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_width2=vec2(outset,inset);\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
-var linePatternFrag = "uniform lowp float u_device_pixel_ratio;uniform vec2 u_texsize;uniform float u_fade;uniform mediump vec3 u_scale;uniform sampler2D u_image;varying vec2 v_normal;varying vec2 v_width2;varying float v_linesofar;varying float v_gamma_scale;varying float v_width;\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileZoomRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;vec2 pattern_size_a=vec2(display_size_a.x*fromScale/tileZoomRatio,display_size_a.y);vec2 pattern_size_b=vec2(display_size_b.x*toScale/tileZoomRatio,display_size_b.y);float aspect_a=display_size_a.y/v_width;float aspect_b=display_size_b.y/v_width;float dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);float x_a=mod(v_linesofar/pattern_size_a.x*aspect_a,1.0);float x_b=mod(v_linesofar/pattern_size_b.x*aspect_b,1.0);float y=0.5*v_normal.y+0.5;vec2 texel_size=1.0/u_texsize;vec2 pos_a=mix(pattern_tl_a*texel_size-texel_size,pattern_br_a*texel_size+texel_size,vec2(x_a,y));vec2 pos_b=mix(pattern_tl_b*texel_size-texel_size,pattern_br_b*texel_size+texel_size,vec2(x_b,y));vec4 color=mix(texture2D(u_image,pos_a),texture2D(u_image,pos_b),u_fade);gl_FragColor=color*alpha*opacity;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var linePatternFrag = "uniform lowp float u_device_pixel_ratio;uniform vec2 u_texsize;uniform float u_fade;uniform mediump vec3 u_scale;uniform sampler2D u_image;varying vec2 v_normal;varying vec2 v_width2;varying float v_linesofar;varying float v_gamma_scale;varying float v_width;\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\nvec2 pattern_tl_a=pattern_from.xy;vec2 pattern_br_a=pattern_from.zw;vec2 pattern_tl_b=pattern_to.xy;vec2 pattern_br_b=pattern_to.zw;float tileZoomRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;vec2 display_size_a=(pattern_br_a-pattern_tl_a)/pixel_ratio_from;vec2 display_size_b=(pattern_br_b-pattern_tl_b)/pixel_ratio_to;vec2 pattern_size_a=vec2(display_size_a.x*fromScale/tileZoomRatio,display_size_a.y);vec2 pattern_size_b=vec2(display_size_b.x*toScale/tileZoomRatio,display_size_b.y);float aspect_a=display_size_a.y/v_width;float aspect_b=display_size_b.y/v_width;float dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);float x_a=mod(v_linesofar/pattern_size_a.x*aspect_a,1.0);float x_b=mod(v_linesofar/pattern_size_b.x*aspect_b,1.0);float y=0.5*v_normal.y+0.5;vec2 texel_size=1.0/u_texsize;vec2 pos_a=mix(pattern_tl_a*texel_size-texel_size,pattern_br_a*texel_size+texel_size,vec2(x_a,y));vec2 pos_b=mix(pattern_tl_b*texel_size-texel_size,pattern_br_b*texel_size+texel_size,vec2(x_b,y));vec4 color=mix(texture2D(u_image,pos_a),texture2D(u_image,pos_b),u_fade);\n#ifdef FOG\ncolor=fog_dither(fog_apply_premultiplied(color,v_fog_pos));\n#endif\ngl_FragColor=color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var linePatternVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_linesofar;uniform mat4 u_matrix;uniform vec2 u_units_to_pixels;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;varying vec2 v_normal;varying vec2 v_width2;varying float v_linesofar;varying float v_gamma_scale;varying float v_width;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_linesofar=a_linesofar;v_width2=vec2(outset,inset);v_width=floorwidth;}";
+var linePatternVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_linesofar;uniform mat4 u_matrix;uniform vec2 u_units_to_pixels;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;varying vec2 v_normal;varying vec2 v_width2;varying float v_linesofar;varying float v_gamma_scale;varying float v_width;\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\n#pragma mapbox: define lowp vec4 pattern_from\n#pragma mapbox: define lowp vec4 pattern_to\n#pragma mapbox: define lowp float pixel_ratio_from\n#pragma mapbox: define lowp float pixel_ratio_to\nvoid main() {\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\n#pragma mapbox: initialize mediump vec4 pattern_from\n#pragma mapbox: initialize mediump vec4 pattern_to\n#pragma mapbox: initialize lowp float pixel_ratio_from\n#pragma mapbox: initialize lowp float pixel_ratio_to\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_linesofar=a_linesofar;v_width2=vec2(outset,inset);v_width=floorwidth;\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
-var lineSDFFrag = "uniform lowp float u_device_pixel_ratio;uniform sampler2D u_image;uniform float u_sdfgamma;uniform float u_mix;varying vec2 v_normal;varying vec2 v_width2;varying vec2 v_tex_a;varying vec2 v_tex_b;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);float sdfdist_a=texture2D(u_image,v_tex_a).a;float sdfdist_b=texture2D(u_image,v_tex_b).a;float sdfdist=mix(sdfdist_a,sdfdist_b,u_mix);alpha*=smoothstep(0.5-u_sdfgamma/floorwidth,0.5+u_sdfgamma/floorwidth,sdfdist);gl_FragColor=color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var lineSDFFrag = "uniform lowp float u_device_pixel_ratio;uniform sampler2D u_image;uniform float u_mix;uniform vec3 u_scale;varying vec2 v_normal;varying vec2 v_width2;varying vec2 v_tex_a;varying vec2 v_tex_b;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\n#pragma mapbox: define lowp vec4 dash_from\n#pragma mapbox: define lowp vec4 dash_to\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\n#pragma mapbox: initialize mediump vec4 dash_from\n#pragma mapbox: initialize mediump vec4 dash_to\nfloat dist=length(v_normal)*v_width2.s;float blur2=(blur+1.0/u_device_pixel_ratio)*v_gamma_scale;float alpha=clamp(min(dist-(v_width2.t-blur2),v_width2.s-dist)/blur2,0.0,1.0);float sdfdist_a=texture2D(u_image,v_tex_a).a;float sdfdist_b=texture2D(u_image,v_tex_b).a;float sdfdist=mix(sdfdist_a,sdfdist_b,u_mix);float sdfwidth=min(dash_from.z*u_scale.y,dash_to.z*u_scale.z);float sdfgamma=1.0/(2.0*u_device_pixel_ratio)/sdfwidth;alpha*=smoothstep(0.5-sdfgamma/floorwidth,0.5+sdfgamma/floorwidth,sdfdist);vec4 out_color=color;\n#ifdef FOG\nout_color=fog_dither(fog_apply_premultiplied(out_color,v_fog_pos));\n#endif\ngl_FragColor=out_color*(alpha*opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var lineSDFVert = "\n#define scale 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_linesofar;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;uniform vec2 u_patternscale_a;uniform float u_tex_y_a;uniform vec2 u_patternscale_b;uniform float u_tex_y_b;uniform vec2 u_units_to_pixels;varying vec2 v_normal;varying vec2 v_width2;varying vec2 v_tex_a;varying vec2 v_tex_b;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*scale;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*scale*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nv_tex_a=vec2(a_linesofar*u_patternscale_a.x/floorwidth,normal.y*u_patternscale_a.y+u_tex_y_a);v_tex_b=vec2(a_linesofar*u_patternscale_b.x/floorwidth,normal.y*u_patternscale_b.y+u_tex_y_b);v_width2=vec2(outset,inset);}";
+var lineSDFVert = "\n#define EXTRUDE_SCALE 0.015873016\nattribute vec2 a_pos_normal;attribute vec4 a_data;attribute float a_linesofar;uniform mat4 u_matrix;uniform mediump float u_ratio;uniform lowp float u_device_pixel_ratio;uniform vec2 u_units_to_pixels;uniform vec2 u_texsize;uniform mediump vec3 u_scale;varying vec2 v_normal;varying vec2 v_width2;varying vec2 v_tex_a;varying vec2 v_tex_b;varying float v_gamma_scale;\n#pragma mapbox: define highp vec4 color\n#pragma mapbox: define lowp float blur\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define mediump float gapwidth\n#pragma mapbox: define lowp float offset\n#pragma mapbox: define mediump float width\n#pragma mapbox: define lowp float floorwidth\n#pragma mapbox: define lowp vec4 dash_from\n#pragma mapbox: define lowp vec4 dash_to\nvoid main() {\n#pragma mapbox: initialize highp vec4 color\n#pragma mapbox: initialize lowp float blur\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize mediump float gapwidth\n#pragma mapbox: initialize lowp float offset\n#pragma mapbox: initialize mediump float width\n#pragma mapbox: initialize lowp float floorwidth\n#pragma mapbox: initialize mediump vec4 dash_from\n#pragma mapbox: initialize mediump vec4 dash_to\nfloat ANTIALIASING=1.0/u_device_pixel_ratio/2.0;vec2 a_extrude=a_data.xy-128.0;float a_direction=mod(a_data.z,4.0)-1.0;vec2 pos=floor(a_pos_normal*0.5);mediump vec2 normal=a_pos_normal-2.0*pos;normal.y=normal.y*2.0-1.0;v_normal=normal;gapwidth=gapwidth/2.0;float halfwidth=width/2.0;offset=-1.0*offset;float inset=gapwidth+(gapwidth > 0.0 ? ANTIALIASING : 0.0);float outset=gapwidth+halfwidth*(gapwidth > 0.0 ? 2.0 : 1.0)+(halfwidth==0.0 ? 0.0 : ANTIALIASING);mediump vec2 dist=outset*a_extrude*EXTRUDE_SCALE;mediump float u=0.5*a_direction;mediump float t=1.0-abs(u);mediump vec2 offset2=offset*a_extrude*EXTRUDE_SCALE*normal.y*mat2(t,-u,u,t);vec4 projected_extrude=u_matrix*vec4(dist/u_ratio,0.0,0.0);gl_Position=u_matrix*vec4(pos+offset2/u_ratio,0.0,1.0)+projected_extrude;\n#ifndef RENDER_TO_TEXTURE\nfloat extrude_length_without_perspective=length(dist);float extrude_length_with_perspective=length(projected_extrude.xy/gl_Position.w*u_units_to_pixels);v_gamma_scale=extrude_length_without_perspective/extrude_length_with_perspective;\n#else\nv_gamma_scale=1.0;\n#endif\nfloat tileZoomRatio=u_scale.x;float fromScale=u_scale.y;float toScale=u_scale.z;float widthA=dash_from.z*fromScale;float widthB=dash_to.z*toScale;float heightA=dash_from.y;float heightB=dash_to.y;v_tex_a=vec2(a_linesofar*(tileZoomRatio/widthA)/floorwidth,(-normal.y*heightA+dash_from.x+0.5)/u_texsize.y);v_tex_b=vec2(a_linesofar*(tileZoomRatio/widthB)/floorwidth,(-normal.y*heightB+dash_to.x+0.5)/u_texsize.y);v_width2=vec2(outset,inset);\n#ifdef FOG\nv_fog_pos=fog_position(pos);\n#endif\n}";
 
-var rasterFrag = "uniform float u_fade_t;uniform float u_opacity;uniform sampler2D u_image0;uniform sampler2D u_image1;varying vec2 v_pos0;varying vec2 v_pos1;uniform float u_brightness_low;uniform float u_brightness_high;uniform float u_saturation_factor;uniform float u_contrast_factor;uniform vec3 u_spin_weights;void main() {vec4 color0=texture2D(u_image0,v_pos0);vec4 color1=texture2D(u_image1,v_pos1);if (color0.a > 0.0) {color0.rgb=color0.rgb/color0.a;}if (color1.a > 0.0) {color1.rgb=color1.rgb/color1.a;}vec4 color=mix(color0,color1,u_fade_t);color.a*=u_opacity;vec3 rgb=color.rgb;rgb=vec3(\ndot(rgb,u_spin_weights.xyz),dot(rgb,u_spin_weights.zxy),dot(rgb,u_spin_weights.yzx));float average=(color.r+color.g+color.b)/3.0;rgb+=(average-rgb)*u_saturation_factor;rgb=(rgb-0.5)*u_contrast_factor+0.5;vec3 u_high_vec=vec3(u_brightness_low,u_brightness_low,u_brightness_low);vec3 u_low_vec=vec3(u_brightness_high,u_brightness_high,u_brightness_high);gl_FragColor=vec4(mix(u_high_vec,u_low_vec,rgb)*color.a,color.a);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var rasterFrag = "uniform float u_fade_t;uniform float u_opacity;uniform sampler2D u_image0;uniform sampler2D u_image1;varying vec2 v_pos0;varying vec2 v_pos1;uniform float u_brightness_low;uniform float u_brightness_high;uniform float u_saturation_factor;uniform float u_contrast_factor;uniform vec3 u_spin_weights;void main() {vec4 color0=texture2D(u_image0,v_pos0);vec4 color1=texture2D(u_image1,v_pos1);if (color0.a > 0.0) {color0.rgb=color0.rgb/color0.a;}if (color1.a > 0.0) {color1.rgb=color1.rgb/color1.a;}vec4 color=mix(color0,color1,u_fade_t);color.a*=u_opacity;vec3 rgb=color.rgb;rgb=vec3(\ndot(rgb,u_spin_weights.xyz),dot(rgb,u_spin_weights.zxy),dot(rgb,u_spin_weights.yzx));float average=(color.r+color.g+color.b)/3.0;rgb+=(average-rgb)*u_saturation_factor;rgb=(rgb-0.5)*u_contrast_factor+0.5;vec3 u_high_vec=vec3(u_brightness_low,u_brightness_low,u_brightness_low);vec3 u_low_vec=vec3(u_brightness_high,u_brightness_high,u_brightness_high);vec3 out_color=mix(u_high_vec,u_low_vec,rgb);\n#ifdef FOG\nout_color=fog_dither(fog_apply(out_color,v_fog_pos));\n#endif\ngl_FragColor=vec4(out_color*color.a,color.a);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var rasterVert = "uniform mat4 u_matrix;uniform vec2 u_tl_parent;uniform float u_scale_parent;uniform float u_buffer_scale;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos0;varying vec2 v_pos1;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos0=(((a_texture_pos/8192.0)-0.5)/u_buffer_scale )+0.5;v_pos1=(v_pos0*u_scale_parent)+u_tl_parent;}";
+var rasterVert = "uniform mat4 u_matrix;uniform vec2 u_tl_parent;uniform float u_scale_parent;uniform float u_buffer_scale;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos0;varying vec2 v_pos1;void main() {gl_Position=u_matrix*vec4(a_pos,0,1);v_pos0=(((a_texture_pos/8192.0)-0.5)/u_buffer_scale )+0.5;v_pos1=(v_pos0*u_scale_parent)+u_tl_parent;\n#ifdef FOG\nv_fog_pos=fog_position(a_pos);\n#endif\n}";
 
 var symbolIconFrag = "uniform sampler2D u_texture;varying vec2 v_tex;varying float v_fade_opacity;\n#pragma mapbox: define lowp float opacity\nvoid main() {\n#pragma mapbox: initialize lowp float opacity\nlowp float alpha=opacity*v_fade_opacity;gl_FragColor=texture2D(u_texture,v_tex)*alpha;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
@@ -34168,29 +34690,36 @@ var symbolTextAndIconFrag = "#define SDF_PX 8.0\n#define SDF 1.0\n#define ICON 0
 
 var symbolTextAndIconVert = "attribute vec4 a_pos_offset;attribute vec4 a_data;attribute vec3 a_projected_pos;attribute float a_fade_opacity;uniform bool u_is_size_zoom_constant;uniform bool u_is_size_feature_constant;uniform highp float u_size_t;uniform highp float u_size;uniform mat4 u_matrix;uniform mat4 u_label_plane_matrix;uniform mat4 u_coord_matrix;uniform bool u_is_text;uniform bool u_pitch_with_map;uniform highp float u_pitch;uniform bool u_rotate_symbol;uniform highp float u_aspect_ratio;uniform highp float u_camera_to_center_distance;uniform float u_fade_change;uniform vec2 u_texsize;uniform vec2 u_texsize_icon;varying vec4 v_data0;varying vec4 v_data1;\n#pragma mapbox: define highp vec4 fill_color\n#pragma mapbox: define highp vec4 halo_color\n#pragma mapbox: define lowp float opacity\n#pragma mapbox: define lowp float halo_width\n#pragma mapbox: define lowp float halo_blur\nvoid main() {\n#pragma mapbox: initialize highp vec4 fill_color\n#pragma mapbox: initialize highp vec4 halo_color\n#pragma mapbox: initialize lowp float opacity\n#pragma mapbox: initialize lowp float halo_width\n#pragma mapbox: initialize lowp float halo_blur\nvec2 a_pos=a_pos_offset.xy;vec2 a_offset=a_pos_offset.zw;vec2 a_tex=a_data.xy;vec2 a_size=a_data.zw;float a_size_min=floor(a_size[0]*0.5);float is_sdf=a_size[0]-2.0*a_size_min;highp float segment_angle=-a_projected_pos[2];float size;if (!u_is_size_zoom_constant && !u_is_size_feature_constant) {size=mix(a_size_min,a_size[1],u_size_t)/128.0;} else if (u_is_size_zoom_constant && !u_is_size_feature_constant) {size=a_size_min/128.0;} else {size=u_size;}float h=elevation(a_pos);vec4 projectedPoint=u_matrix*vec4(a_pos,h,1);highp float camera_to_anchor_distance=projectedPoint.w;highp float distance_ratio=u_pitch_with_map ?\ncamera_to_anchor_distance/u_camera_to_center_distance :\nu_camera_to_center_distance/camera_to_anchor_distance;highp float perspective_ratio=clamp(\n0.5+0.5*distance_ratio,0.0,1.5);size*=perspective_ratio;float fontScale=size/24.0;highp float symbol_rotation=0.0;if (u_rotate_symbol) {vec4 offsetProjectedPoint=u_matrix*vec4(a_pos+vec2(1,0),h,1);vec2 a=projectedPoint.xy/projectedPoint.w;vec2 b=offsetProjectedPoint.xy/offsetProjectedPoint.w;symbol_rotation=atan((b.y-a.y)/u_aspect_ratio,b.x-a.x);}highp float angle_sin=sin(segment_angle+symbol_rotation);highp float angle_cos=cos(segment_angle+symbol_rotation);mat2 rotation_matrix=mat2(angle_cos,-1.0*angle_sin,angle_sin,angle_cos);vec4 projected_pos=u_label_plane_matrix*vec4(a_projected_pos.xy,h,1.0);float z=0.0;vec2 offset=rotation_matrix*(a_offset/32.0*fontScale);\n#ifdef PITCH_WITH_MAP_TERRAIN\nvec4 tile_pos=u_label_plane_matrix_inv*vec4(a_projected_pos.xy+offset,0.0,1.0);z=elevation(tile_pos.xy);\n#endif\nfloat occlusion_fade=occlusionFade(projectedPoint);gl_Position=mix(u_coord_matrix*vec4(projected_pos.xy/projected_pos.w+offset,z,1.0),AWAY,float(projectedPoint.w <=0.0 || occlusion_fade==0.0));float gamma_scale=gl_Position.w;vec2 fade_opacity=unpack_opacity(a_fade_opacity);float fade_change=fade_opacity[1] > 0.5 ? u_fade_change :-u_fade_change;float interpolated_fade_opacity=max(0.0,min(occlusion_fade,fade_opacity[0]+fade_change));v_data0.xy=a_tex/u_texsize;v_data0.zw=a_tex/u_texsize_icon;v_data1=vec4(gamma_scale,size,interpolated_fade_opacity,is_sdf);}";
 
-var skyboxFrag = "\nvarying lowp vec3 v_uv;uniform lowp samplerCube u_cubemap;uniform lowp float u_opacity;uniform highp float u_temporal_offset;uniform highp vec3 u_sun_direction;highp vec3 hash(highp vec2 p) {highp vec3 p3=fract(vec3(p.xyx)*vec3(443.8975,397.2973,491.1871));p3+=dot(p3,p3.yxz+19.19);return fract(vec3((p3.x+p3.y)*p3.z,(p3.x+p3.z)*p3.y,(p3.y+p3.z)*p3.x));}vec3 dither(vec3 color,highp vec2 seed) {vec3 rnd=hash(seed)+hash(seed+0.59374)-0.5;color.rgb+=rnd/255.0;return color;}float sun_disk(highp vec3 ray_direction,highp vec3 sun_direction) {highp float cos_angle=dot(normalize(ray_direction),sun_direction);const highp float cos_sun_angular_diameter=0.99996192306;const highp float smoothstep_delta=1e-5;return smoothstep(\ncos_sun_angular_diameter-smoothstep_delta,cos_sun_angular_diameter+smoothstep_delta,cos_angle);}float map(float value,float start,float end,float new_start,float new_end) {return ((value-start)*(new_end-new_start))/(end-start)+new_start;}void main() {vec3 uv=v_uv;const float y_bias=0.015;uv.y+=y_bias;uv.y=pow(abs(uv.y),1.0/5.0);uv.y=map(uv.y,0.0,1.0,-1.0,1.0);vec3 sky_color=textureCube(u_cubemap,uv).rgb;sky_color.rgb=dither(sky_color.rgb,gl_FragCoord.xy+u_temporal_offset);sky_color+=0.1*sun_disk(v_uv,u_sun_direction);gl_FragColor=vec4(sky_color*u_opacity,u_opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var skyboxFrag = "\nvarying lowp vec3 v_uv;uniform lowp samplerCube u_cubemap;uniform lowp float u_opacity;uniform highp float u_temporal_offset;uniform highp vec3 u_sun_direction;float sun_disk(highp vec3 ray_direction,highp vec3 sun_direction) {highp float cos_angle=dot(normalize(ray_direction),sun_direction);const highp float cos_sun_angular_diameter=0.99996192306;const highp float smoothstep_delta=1e-5;return smoothstep(\ncos_sun_angular_diameter-smoothstep_delta,cos_sun_angular_diameter+smoothstep_delta,cos_angle);}float map(float value,float start,float end,float new_start,float new_end) {return ((value-start)*(new_end-new_start))/(end-start)+new_start;}void main() {vec3 uv=v_uv;const float y_bias=0.015;uv.y+=y_bias;uv.y=pow(abs(uv.y),1.0/5.0);uv.y=map(uv.y,0.0,1.0,-1.0,1.0);vec3 sky_color=textureCube(u_cubemap,uv).rgb;\n#ifdef FOG\nsky_color=fog_apply_sky_gradient(v_uv.xzy,sky_color);\n#endif\nsky_color.rgb=dither(sky_color.rgb,gl_FragCoord.xy+u_temporal_offset);sky_color+=0.1*sun_disk(v_uv,u_sun_direction);gl_FragColor=vec4(sky_color*u_opacity,u_opacity);\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var skyboxGradientFrag = "varying highp vec3 v_uv;uniform lowp sampler2D u_color_ramp;uniform lowp vec3 u_center_direction;uniform lowp float u_radius;uniform lowp float u_opacity;uniform highp float u_temporal_offset;highp vec3 hash(highp vec2 p) {highp vec3 p3=fract(vec3(p.xyx)*vec3(443.8975,397.2973,491.1871));p3+=dot(p3,p3.yxz+19.19);return fract(vec3((p3.x+p3.y)*p3.z,(p3.x+p3.z)*p3.y,(p3.y+p3.z)*p3.x));}vec3 dither(vec3 color,highp vec2 seed) {vec3 rnd=hash(seed)+hash(seed+0.59374)-0.5;color.rgb+=rnd/255.0;return color;}void main() {float progress=acos(dot(normalize(v_uv),u_center_direction))/u_radius;vec4 color=texture2D(u_color_ramp,vec2(progress,0.5))*u_opacity;color.rgb=dither(color.rgb,gl_FragCoord.xy+u_temporal_offset);gl_FragColor=color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var skyboxGradientFrag = "varying highp vec3 v_uv;uniform lowp sampler2D u_color_ramp;uniform lowp vec3 u_center_direction;uniform lowp float u_radius;uniform lowp float u_opacity;uniform highp float u_temporal_offset;void main() {float progress=acos(dot(normalize(v_uv),u_center_direction))/u_radius;vec4 color=texture2D(u_color_ramp,vec2(progress,0.5));\n#ifdef FOG\ncolor.rgb=fog_apply_sky_gradient(v_uv.xzy,color.rgb/color.a)*color.a;\n#endif\ncolor*=u_opacity;color.rgb=dither(color.rgb,gl_FragCoord.xy+u_temporal_offset);gl_FragColor=color;\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
 var skyboxVert = "attribute highp vec3 a_pos_3f;uniform lowp mat4 u_matrix;varying highp vec3 v_uv;void main() {const mat3 half_neg_pi_around_x=mat3(1.0,0.0, 0.0,0.0,0.0,-1.0,0.0,1.0, 0.0);v_uv=half_neg_pi_around_x*a_pos_3f;vec4 pos=u_matrix*vec4(a_pos_3f,1.0);gl_Position=pos.xyww;}";
 
-var terrainRasterFrag = "uniform sampler2D u_image0;varying vec2 v_pos0;void main() {gl_FragColor=texture2D(u_image0,v_pos0);\n#ifdef TERRAIN_WIREFRAME\ngl_FragColor=vec4(1.0,0.0,0.0,0.8);\n#endif\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
+var terrainRasterFrag = "uniform sampler2D u_image0;varying vec2 v_pos0;\n#ifdef FOG\nvarying float v_fog_opacity;\n#endif\nvoid main() {vec4 color=texture2D(u_image0,v_pos0);\n#ifdef FOG\ncolor.rgb=fog_dither(fog_apply_from_vert(color.rgb,v_fog_opacity));\n#endif\ngl_FragColor=color;\n#ifdef TERRAIN_WIREFRAME\ngl_FragColor=vec4(1.0,0.0,0.0,0.8);\n#endif\n#ifdef OVERDRAW_INSPECTOR\ngl_FragColor=vec4(1.0);\n#endif\n}";
 
-var terrainRasterVert = "uniform mat4 u_matrix;uniform float u_skirt_height;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos0;const float skirtOffset=24575.0;const float wireframeOffset=0.00015;void main() {v_pos0=a_texture_pos/8192.0;float skirt=float(a_pos.x >=skirtOffset);float elevation=elevation(a_texture_pos)-skirt*u_skirt_height;\n#ifdef TERRAIN_WIREFRAME\nelevation+=u_skirt_height*u_skirt_height*wireframeOffset;\n#endif\nvec2 decodedPos=a_pos-vec2(skirt*skirtOffset,0.0);gl_Position=u_matrix*vec4(decodedPos,elevation,1.0);}";
+var terrainRasterVert = "uniform mat4 u_matrix;uniform float u_skirt_height;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying vec2 v_pos0;\n#ifdef FOG\nvarying float v_fog_opacity;\n#endif\nconst float skirtOffset=24575.0;const float wireframeOffset=0.00015;void main() {v_pos0=a_texture_pos/8192.0;float skirt=float(a_pos.x >=skirtOffset);float elevation=elevation(a_texture_pos)-skirt*u_skirt_height;\n#ifdef TERRAIN_WIREFRAME\nelevation+=u_skirt_height*u_skirt_height*wireframeOffset;\n#endif\nvec2 decodedPos=a_pos-vec2(skirt*skirtOffset,0.0);gl_Position=u_matrix*vec4(decodedPos,elevation,1.0);\n#ifdef FOG\nv_fog_opacity=fog(fog_position(vec3(decodedPos,elevation)));\n#endif\n}";
 
 var terrainDepthFrag = "#ifdef GL_ES\nprecision highp float;\n#endif\nvec4 pack_depth(float ndc_z) {float depth=ndc_z*0.5+0.5;const vec4 bit_shift=vec4(256.0*256.0*256.0,256.0*256.0,256.0,1.0);const vec4 bit_mask =vec4(0.0,1.0/256.0,1.0/256.0,1.0/256.0);vec4 res=fract(depth*bit_shift);res-=res.xxyz*bit_mask;return res;}varying float v_depth;void main() {gl_FragColor=pack_depth(v_depth);}";
 
 var terrainDepthVert = "uniform mat4 u_matrix;attribute vec2 a_pos;attribute vec2 a_texture_pos;varying float v_depth;void main() {float elevation=elevation(a_texture_pos);gl_Position=u_matrix*vec4(a_pos,elevation,1.0);v_depth=gl_Position.z/gl_Position.w;}";
 
-var preludeTerrainVert = "\n#define ELEVATION_SCALE 7.3\n#ifdef TERRAIN\nuniform sampler2D u_dem;uniform sampler2D u_dem_prev;uniform vec4 u_dem_unpack;uniform vec2 u_dem_tl;uniform vec2 u_dem_tl_prev;uniform float u_dem_scale;uniform float u_dem_scale_prev;uniform float u_dem_size;uniform float u_dem_lerp;uniform float u_exaggeration;uniform float u_meter_to_dem;uniform mat4 u_label_plane_matrix_inv;uniform sampler2D u_depth;uniform vec2 u_depth_size_inv;vec4 tileUvToDemSample(vec2 uv,float dem_size,float dem_scale,vec2 dem_tl) {vec2 pos=dem_size*(uv*dem_scale+dem_tl)+1.0;vec2 f=fract(pos);return vec4((pos-f+0.5)/(dem_size+2.0),f);}float decodeElevation(vec4 v) {return dot(vec4(v.xyz*255.0,-1.0),u_dem_unpack);}float currentElevation(vec2 apos) {float dd=1.0/(u_dem_size+2.0);vec4 r=tileUvToDemSample(apos/8192.0,u_dem_size,u_dem_scale,u_dem_tl);vec2 pos=r.xy;vec2 f=r.zw;float tl=decodeElevation(texture2D(u_dem,pos));float tr=decodeElevation(texture2D(u_dem,pos+vec2(dd,0.0)));float bl=decodeElevation(texture2D(u_dem,pos+vec2(0.0,dd)));float br=decodeElevation(texture2D(u_dem,pos+vec2(dd,dd)));return u_exaggeration*mix(mix(tl,tr,f.x),mix(bl,br,f.x),f.y);}float prevElevation(vec2 apos) {float dd=1.0/(u_dem_size+2.0);vec4 r=tileUvToDemSample(apos/8192.0,u_dem_size,u_dem_scale_prev,u_dem_tl_prev);vec2 pos=r.xy;vec2 f=r.zw;float tl=decodeElevation(texture2D(u_dem_prev,pos));float tr=decodeElevation(texture2D(u_dem_prev,pos+vec2(dd,0.0)));float bl=decodeElevation(texture2D(u_dem_prev,pos+vec2(0.0,dd)));float br=decodeElevation(texture2D(u_dem_prev,pos+vec2(dd,dd)));return u_exaggeration*mix(mix(tl,tr,f.x),mix(bl,br,f.x),f.y);}\n#ifdef TERRAIN_VERTEX_MORPHING\nfloat elevation(vec2 apos) {float nextElevation=currentElevation(apos);float prevElevation=prevElevation(apos);return mix(prevElevation,nextElevation,u_dem_lerp);}\n#else\nfloat elevation(vec2 apos) {return currentElevation(apos);}\n#endif\nfloat unpack_depth(vec4 rgba_depth)\n{const vec4 bit_shift=vec4(1.0/(256.0*256.0*256.0),1.0/(256.0*256.0),1.0/256.0,1.0);return dot(rgba_depth,bit_shift)*2.0-1.0;}bool isOccluded(vec4 frag) {vec3 coord=frag.xyz/frag.w;float depth=unpack_depth(texture2D(u_depth,(coord.xy+1.0)*0.5));return coord.z > depth+0.0005;}float occlusionFade(vec4 frag) {vec3 coord=frag.xyz/frag.w;vec3 df=vec3(5.0*u_depth_size_inv,0.0);vec2 uv=0.5*coord.xy+0.5;vec4 depth=vec4(\nunpack_depth(texture2D(u_depth,uv-df.xz)),unpack_depth(texture2D(u_depth,uv+df.xz)),unpack_depth(texture2D(u_depth,uv-df.zy)),unpack_depth(texture2D(u_depth,uv+df.zy))\n);return dot(vec4(0.25),vec4(1.0)-clamp(300.0*(vec4(coord.z-0.001)-depth),0.0,1.0));}vec4 fourSample(vec2 pos,vec2 off) {vec4 demtl=vec4(texture2D(u_dem,pos).xyz*255.0,-1.0);float tl=dot(demtl,u_dem_unpack);vec4 demtr=vec4(texture2D(u_dem,pos+vec2(off.x,0.0)).xyz*255.0,-1.0);float tr=dot(demtr,u_dem_unpack);vec4 dembl=vec4(texture2D(u_dem,pos+vec2(0.0,off.y)).xyz*255.0,-1.0);float bl=dot(dembl,u_dem_unpack);vec4 dembr=vec4(texture2D(u_dem,pos+off).xyz*255.0,-1.0);float br=dot(dembr,u_dem_unpack);return vec4(tl,tr,bl,br);}float flatElevation(vec2 pack) {vec2 apos=floor(pack/8.0);vec2 span=10.0*(pack-apos*8.0);vec2 uvTex=(apos-vec2(1.0,1.0))/8190.0;float size=u_dem_size+2.0;float dd=1.0/size;vec2 pos=u_dem_size*(uvTex*u_dem_scale+u_dem_tl)+1.0;vec2 f=fract(pos);pos=(pos-f+0.5)*dd;vec4 h=fourSample(pos,vec2(dd));float z=mix(mix(h.x,h.y,f.x),mix(h.z,h.w,f.x),f.y);vec2 w=floor(0.5*(span*u_meter_to_dem-1.0));vec2 d=dd*w;vec4 bounds=vec4(d,vec2(1.0)-d);h=fourSample(pos-d,2.0*d+vec2(dd));vec4 diff=abs(h.xzxy-h.ywzw);vec2 slope=min(vec2(0.25),u_meter_to_dem*0.5*(diff.xz+diff.yw)/(2.0*w+vec2(1.0)));vec2 fix=slope*span;float base=z+max(fix.x,fix.y);return u_exaggeration*base;}float elevationFromUint16(float word) {return u_exaggeration*word/ELEVATION_SCALE;}\n#else\nfloat elevation(vec2 pos) { return 0.0; }bool isOccluded(vec4 frag) { return false; }float occlusionFade(vec4 frag) { return 1.0; }\n#endif";
+var preludeTerrainVert = "\n#define ELEVATION_SCALE 7.0\n#define ELEVATION_OFFSET 450.0\n#ifdef TERRAIN\nuniform sampler2D u_dem;uniform sampler2D u_dem_prev;uniform vec4 u_dem_unpack;uniform vec2 u_dem_tl;uniform vec2 u_dem_tl_prev;uniform float u_dem_scale;uniform float u_dem_scale_prev;uniform float u_dem_size;uniform float u_dem_lerp;uniform float u_exaggeration;uniform float u_meter_to_dem;uniform mat4 u_label_plane_matrix_inv;uniform sampler2D u_depth;uniform vec2 u_depth_size_inv;vec4 tileUvToDemSample(vec2 uv,float dem_size,float dem_scale,vec2 dem_tl) {vec2 pos=dem_size*(uv*dem_scale+dem_tl)+1.0;vec2 f=fract(pos);return vec4((pos-f+0.5)/(dem_size+2.0),f);}float decodeElevation(vec4 v) {return dot(vec4(v.xyz*255.0,-1.0),u_dem_unpack);}float currentElevation(vec2 apos) {float dd=1.0/(u_dem_size+2.0);vec4 r=tileUvToDemSample(apos/8192.0,u_dem_size,u_dem_scale,u_dem_tl);vec2 pos=r.xy;vec2 f=r.zw;float tl=decodeElevation(texture2D(u_dem,pos));\n#ifdef TERRAIN_DEM_NEAREST_FILTER\nreturn u_exaggeration*tl;\n#endif\nfloat tr=decodeElevation(texture2D(u_dem,pos+vec2(dd,0.0)));float bl=decodeElevation(texture2D(u_dem,pos+vec2(0.0,dd)));float br=decodeElevation(texture2D(u_dem,pos+vec2(dd,dd)));return u_exaggeration*mix(mix(tl,tr,f.x),mix(bl,br,f.x),f.y);}float prevElevation(vec2 apos) {float dd=1.0/(u_dem_size+2.0);vec4 r=tileUvToDemSample(apos/8192.0,u_dem_size,u_dem_scale_prev,u_dem_tl_prev);vec2 pos=r.xy;vec2 f=r.zw;float tl=decodeElevation(texture2D(u_dem_prev,pos));float tr=decodeElevation(texture2D(u_dem_prev,pos+vec2(dd,0.0)));float bl=decodeElevation(texture2D(u_dem_prev,pos+vec2(0.0,dd)));float br=decodeElevation(texture2D(u_dem_prev,pos+vec2(dd,dd)));return u_exaggeration*mix(mix(tl,tr,f.x),mix(bl,br,f.x),f.y);}\n#ifdef TERRAIN_VERTEX_MORPHING\nfloat elevation(vec2 apos) {float nextElevation=currentElevation(apos);float prevElevation=prevElevation(apos);return mix(prevElevation,nextElevation,u_dem_lerp);}\n#else\nfloat elevation(vec2 apos) {return currentElevation(apos);}\n#endif\nfloat unpack_depth(vec4 rgba_depth)\n{const vec4 bit_shift=vec4(1.0/(256.0*256.0*256.0),1.0/(256.0*256.0),1.0/256.0,1.0);return dot(rgba_depth,bit_shift)*2.0-1.0;}bool isOccluded(vec4 frag) {vec3 coord=frag.xyz/frag.w;float depth=unpack_depth(texture2D(u_depth,(coord.xy+1.0)*0.5));return coord.z > depth+0.0005;}float occlusionFade(vec4 frag) {vec3 coord=frag.xyz/frag.w;vec3 df=vec3(5.0*u_depth_size_inv,0.0);vec2 uv=0.5*coord.xy+0.5;vec4 depth=vec4(\nunpack_depth(texture2D(u_depth,uv-df.xz)),unpack_depth(texture2D(u_depth,uv+df.xz)),unpack_depth(texture2D(u_depth,uv-df.zy)),unpack_depth(texture2D(u_depth,uv+df.zy))\n);return dot(vec4(0.25),vec4(1.0)-clamp(300.0*(vec4(coord.z-0.001)-depth),0.0,1.0));}vec4 fourSample(vec2 pos,vec2 off) {vec4 demtl=vec4(texture2D(u_dem,pos).xyz*255.0,-1.0);float tl=dot(demtl,u_dem_unpack);vec4 demtr=vec4(texture2D(u_dem,pos+vec2(off.x,0.0)).xyz*255.0,-1.0);float tr=dot(demtr,u_dem_unpack);vec4 dembl=vec4(texture2D(u_dem,pos+vec2(0.0,off.y)).xyz*255.0,-1.0);float bl=dot(dembl,u_dem_unpack);vec4 dembr=vec4(texture2D(u_dem,pos+off).xyz*255.0,-1.0);float br=dot(dembr,u_dem_unpack);return vec4(tl,tr,bl,br);}float flatElevation(vec2 pack) {vec2 apos=floor(pack/8.0);vec2 span=10.0*(pack-apos*8.0);vec2 uvTex=(apos-vec2(1.0,1.0))/8190.0;float size=u_dem_size+2.0;float dd=1.0/size;vec2 pos=u_dem_size*(uvTex*u_dem_scale+u_dem_tl)+1.0;vec2 f=fract(pos);pos=(pos-f+0.5)*dd;vec4 h=fourSample(pos,vec2(dd));float z=mix(mix(h.x,h.y,f.x),mix(h.z,h.w,f.x),f.y);vec2 w=floor(0.5*(span*u_meter_to_dem-1.0));vec2 d=dd*w;vec4 bounds=vec4(d,vec2(1.0)-d);h=fourSample(pos-d,2.0*d+vec2(dd));vec4 diff=abs(h.xzxy-h.ywzw);vec2 slope=min(vec2(0.25),u_meter_to_dem*0.5*(diff.xz+diff.yw)/(2.0*w+vec2(1.0)));vec2 fix=slope*span;float base=z+max(fix.x,fix.y);return u_exaggeration*base;}float elevationFromUint16(float word) {return u_exaggeration*(word/ELEVATION_SCALE-ELEVATION_OFFSET);}\n#else\nfloat elevation(vec2 pos) { return 0.0; }bool isOccluded(vec4 frag) { return false; }float occlusionFade(vec4 frag) { return 1.0; }\n#endif";
+
+var preludeFogVert = "#ifdef FOG\nuniform mat4 u_fog_matrix;vec3 fog_position(vec3 pos) {return (u_fog_matrix*vec4(pos,1.0)).xyz;}vec3 fog_position(vec2 pos) {return fog_position(vec3(pos,0.0));}float fog(vec3 pos) {float depth=length(pos);float opacity=fog_opacity(fog_range(depth));return opacity*fog_horizon_blending(pos/depth);}\n#endif";
+
+var preludeFogFrag = "#ifdef FOG\nuniform float u_fog_temporal_offset;float fog_opacity(vec3 pos) {float depth=length(pos);return fog_opacity(fog_range(depth));}vec3 fog_apply(vec3 color,vec3 pos) {float depth=length(pos);float opacity=fog_opacity(fog_range(depth));opacity*=fog_horizon_blending(pos/depth);return mix(color,u_fog_color.rgb,opacity);}vec3 fog_apply_from_vert(vec3 color,float fog_opac) {return mix(color,u_fog_color.rgb,fog_opac);}vec3 fog_apply_sky_gradient(vec3 camera_ray,vec3 sky_color) {float horizon_blend=fog_horizon_blending(normalize(camera_ray));return mix(sky_color,u_fog_color.rgb,horizon_blend);}vec4 fog_apply_premultiplied(vec4 color,vec3 pos) {float alpha=EPSILON+color.a;color.rgb/=alpha;color.rgb=fog_apply(color.rgb,pos);color.rgb*=alpha;return color;}vec3 fog_dither(vec3 color) {vec2 dither_seed=gl_FragCoord.xy+u_fog_temporal_offset;return dither(color,dither_seed);}vec4 fog_dither(vec4 color) {return vec4(fog_dither(color.rgb),color.a);}\n#endif";
 
 var skyboxCaptureFrag = "\nvarying highp vec3 v_position;uniform highp float u_sun_intensity;uniform highp float u_luminance;uniform lowp vec3 u_sun_direction;uniform highp vec4 u_color_tint_r;uniform highp vec4 u_color_tint_m;\n#ifdef GL_ES\nprecision highp float;\n#endif\n#define BETA_R                  vec3(5.5e-6,13.0e-6,22.4e-6)\n#define BETA_M                  vec3(21e-6,21e-6,21e-6)\n#define MIE_G                   0.76\n#define DENSITY_HEIGHT_SCALE_R  8000.0\n#define DENSITY_HEIGHT_SCALE_M  1200.0\n#define PLANET_RADIUS           6360e3\n#define ATMOSPHERE_RADIUS       6420e3\n#define SAMPLE_STEPS            10\n#define DENSITY_STEPS           4\nfloat ray_sphere_exit(vec3 orig,vec3 dir,float radius) {float a=dot(dir,dir);float b=2.0*dot(dir,orig);float c=dot(orig,orig)-radius*radius;float d=sqrt(b*b-4.0*a*c);return (-b+d)/(2.0*a);}vec3 extinction(vec2 density) {return exp(-vec3(BETA_R*u_color_tint_r.a*density.x+BETA_M*u_color_tint_m.a*density.y));}vec2 local_density(vec3 point) {float height=max(length(point)-PLANET_RADIUS,0.0);float exp_r=exp(-height/DENSITY_HEIGHT_SCALE_R);float exp_m=exp(-height/DENSITY_HEIGHT_SCALE_M);return vec2(exp_r,exp_m);}float phase_ray(float cos_angle) {return (3.0/(16.0*PI))*(1.0+cos_angle*cos_angle);}float phase_mie(float cos_angle) {return (3.0/(8.0*PI))*((1.0-MIE_G*MIE_G)*(1.0+cos_angle*cos_angle))/((2.0+MIE_G*MIE_G)*pow(1.0+MIE_G*MIE_G-2.0*MIE_G*cos_angle,1.5));}vec2 density_to_atmosphere(vec3 point,vec3 light_dir) {float ray_len=ray_sphere_exit(point,light_dir,ATMOSPHERE_RADIUS);float step_len=ray_len/float(DENSITY_STEPS);vec2 density_point_to_atmosphere=vec2(0.0);for (int i=0; i < DENSITY_STEPS;++i) {vec3 point_on_ray=point+light_dir*((float(i)+0.5)*step_len);density_point_to_atmosphere+=local_density(point_on_ray)*step_len;;}return density_point_to_atmosphere;}vec3 atmosphere(vec3 ray_dir,vec3 sun_direction,float sun_intensity) {vec2 density_orig_to_point=vec2(0.0);vec3 scatter_r=vec3(0.0);vec3 scatter_m=vec3(0.0);vec3 origin=vec3(0.0,PLANET_RADIUS,0.0);float ray_len=ray_sphere_exit(origin,ray_dir,ATMOSPHERE_RADIUS);float step_len=ray_len/float(SAMPLE_STEPS);for (int i=0; i < SAMPLE_STEPS;++i) {vec3 point_on_ray=origin+ray_dir*((float(i)+0.5)*step_len);vec2 density=local_density(point_on_ray)*step_len;density_orig_to_point+=density;vec2 density_point_to_atmosphere=density_to_atmosphere(point_on_ray,sun_direction);vec2 density_orig_to_atmosphere=density_orig_to_point+density_point_to_atmosphere;vec3 extinction=extinction(density_orig_to_atmosphere);scatter_r+=density.x*extinction;scatter_m+=density.y*extinction;}float cos_angle=dot(ray_dir,sun_direction);float phase_r=phase_ray(cos_angle);float phase_m=phase_mie(cos_angle);vec3 beta_r=BETA_R*u_color_tint_r.rgb*u_color_tint_r.a;vec3 beta_m=BETA_M*u_color_tint_m.rgb*u_color_tint_m.a;return (scatter_r*phase_r*beta_r+scatter_m*phase_m*beta_m)*sun_intensity;}const float A=0.15;const float B=0.50;const float C=0.10;const float D=0.20;const float E=0.02;const float F=0.30;vec3 uncharted2_tonemap(vec3 x) {return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;}void main() {vec3 ray_direction=v_position;ray_direction.y=pow(ray_direction.y,5.0);const float y_bias=0.015;ray_direction.y+=y_bias;vec3 color=atmosphere(normalize(ray_direction),u_sun_direction,u_sun_intensity);float white_scale=1.0748724675633854;color=uncharted2_tonemap((log2(2.0/pow(u_luminance,4.0)))*color)*white_scale;gl_FragColor=vec4(color,1.0);}";
 
 var skyboxCaptureVert = "attribute highp vec3 a_pos_3f;uniform mat3 u_matrix_3f;varying highp vec3 v_position;float map(float value,float start,float end,float new_start,float new_end) {return ((value-start)*(new_end-new_start))/(end-start)+new_start;}void main() {vec4 pos=vec4(u_matrix_3f*a_pos_3f,1.0);v_position=pos.xyz;v_position.y*=-1.0;v_position.y=map(v_position.y,-1.0,1.0,0.0,1.0);gl_Position=vec4(a_pos_3f.xy,0.0,1.0);}";
 
 let preludeTerrain = {};
+let preludeFog = {};
 preludeTerrain = compile('', preludeTerrainVert, true);
+preludeFog = compile(preludeFogFrag, preludeFogVert, true);
 const prelude = compile(preludeFrag, preludeVert);
+const preludeCommonSource = preludeCommon;
 var shaders = {
     background: compile(backgroundFrag, backgroundVert),
     backgroundPattern: compile(backgroundPatternFrag, backgroundPatternVert),
@@ -34223,17 +34752,28 @@ var shaders = {
     skyboxGradient: compile(skyboxGradientFrag, skyboxVert),
     skyboxCapture: compile(skyboxCaptureFrag, skyboxCaptureVert)
 };
-function compile(fragmentSource, vertexSource, isPreludeTerrainShader) {
-    const re = /#pragma mapbox: ([\w]+) ([\w]+) ([\w]+) ([\w]+)/g;
-    const staticAttributes = vertexSource.match(/attribute (highp |mediump |lowp )?([\w]+) ([\w]+)/g);
-    const fragmentUniforms = fragmentSource.match(/uniform (highp |mediump |lowp )?([\w]+) ([\w]+)([\s]*)([\w]*)/g);
-    const vertexUniforms = vertexSource.match(/uniform (highp |mediump |lowp )?([\w]+) ([\w]+)([\s]*)([\w]*)/g);
+function compile(fragmentSource, vertexSource, isGlobalPrelude) {
+    const pragmaRegex = /#pragma mapbox: ([\w]+) ([\w]+) ([\w]+) ([\w]+)/g;
+    const uniformRegex = /uniform (highp |mediump |lowp )?([\w]+) ([\w]+)([\s]*)([\w]*)/g;
+    const attributeRegex = /attribute (highp |mediump |lowp )?([\w]+) ([\w]+)/g;
+    const staticAttributes = vertexSource.match(attributeRegex);
+    const fragmentUniforms = fragmentSource.match(uniformRegex);
+    const vertexUniforms = vertexSource.match(uniformRegex);
+    const commonUniforms = preludeCommon.match(uniformRegex);
     let staticUniforms = vertexUniforms ? vertexUniforms.concat(fragmentUniforms) : fragmentUniforms;
-    if (!isPreludeTerrainShader) {
-        staticUniforms = preludeTerrain.staticUniforms.concat(staticUniforms);
+    if (!isGlobalPrelude) {
+        if (preludeTerrain.staticUniforms) {
+            staticUniforms = preludeTerrain.staticUniforms.concat(staticUniforms);
+        }
+        if (preludeFog.staticUniforms) {
+            staticUniforms = preludeFog.staticUniforms.concat(staticUniforms);
+        }
+    }
+    if (staticUniforms) {
+        staticUniforms = staticUniforms.concat(commonUniforms);
     }
     const fragmentPragmas = {};
-    fragmentSource = fragmentSource.replace(re, (match, operation, precision, type, name) => {
+    fragmentSource = fragmentSource.replace(pragmaRegex, (match, operation, precision, type, name) => {
         fragmentPragmas[name] = true;
         if (operation === 'define') {
             return `
@@ -34251,7 +34791,7 @@ uniform ${ precision } ${ type } u_${ name };
 `;
         }
     });
-    vertexSource = vertexSource.replace(re, (match, operation, precision, type, name) => {
+    vertexSource = vertexSource.replace(pragmaRegex, (match, operation, precision, type, name) => {
         const attrType = type === 'float' ? 'vec2' : 'vec4';
         const unpackType = name.match(/color/) ? 'color' : attrType;
         if (fragmentPragmas[name]) {
@@ -34444,7 +34984,7 @@ const hillshadeUniformValues = (painter, tile, layer, matrix) => {
     }
     const align = !painter.options.moving;
     return {
-        'u_matrix': matrix ? matrix : painter.transform.calculatePosMatrix(tile.tileID.toUnwrapped(), align),
+        'u_matrix': matrix ? matrix : painter.transform.calculateProjMatrix(tile.tileID.toUnwrapped(), align),
         'u_image': 0,
         'u_latrange': getTileLatRange(painter, tile.tileID),
         'u_light': [
@@ -34522,7 +35062,8 @@ function renderHillshade(painter, coord, tile, layer, depthMode, stencilMode, co
     const program = painter.useProgram('hillshade');
     context.activeTexture.set(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, fbo.colorAttachment.get());
-    const uniformValues = hillshadeUniformValues(painter, tile, layer, painter.terrain ? coord.posMatrix : null);
+    const uniformValues = hillshadeUniformValues(painter, tile, layer, painter.terrain ? coord.projMatrix : null);
+    painter.prepareDrawProgram(context, program, coord.toUnwrapped());
     program.draw(context, gl.TRIANGLES, depthMode, stencilMode, colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, painter.rasterBoundsBuffer, painter.quadTriangleIndexBuffer, painter.rasterBoundsSegments);
 }
 function prepareDEMTexture(painter, tile, dem) {
@@ -34716,9 +35257,10 @@ function drawTerrainRaster(painter, terrain, sourceCache, tileIDs, now) {
                     }
                 };
             }
-            const uniformValues = terrainRasterUniformValues(coord.posMatrix, isEdgeTile(coord.canonical, tr.renderWorldCopies) ? skirt / 10 : skirt);
+            const uniformValues = terrainRasterUniformValues(coord.projMatrix, isEdgeTile(coord.canonical, tr.renderWorldCopies) ? skirt / 10 : skirt);
             setShaderMode(shaderMode, isWireframe);
             terrain.setupElevationDraw(tile, program, elevationOptions);
+            painter.prepareDrawProgram(context, program, coord.toUnwrapped());
             program.draw(context, primitive, depthMode, stencilMode, colorMode, ref_properties.CullFaceMode.backCCW, uniformValues, 'terrain_raster', terrain.gridBuffer, buffer, segments);
         }
     });
@@ -34731,7 +35273,7 @@ function drawTerrainDepth(painter, terrain, sourceCache, tileIDs) {
     const depthMode = new ref_properties.DepthMode(gl.LESS, ref_properties.DepthMode.ReadWrite, painter.depthRangeFor3D);
     for (const coord of tileIDs) {
         const tile = sourceCache.getTile(coord);
-        const uniformValues = terrainRasterUniformValues(coord.posMatrix, 0);
+        const uniformValues = terrainRasterUniformValues(coord.projMatrix, 0);
         terrain.setupElevationDraw(tile, program);
         program.draw(context, gl.TRIANGLES, depthMode, ref_properties.StencilMode.disabled, ref_properties.ColorMode.unblended, ref_properties.CullFaceMode.backCCW, uniformValues, 'terrain_depth', terrain.gridBuffer, terrain.gridIndexBuffer, terrain.gridNoSkirtSegments);
     }
@@ -34842,10 +35384,10 @@ class ProxySourceCache extends ref_properties.SourceCache {
     }
 }
 class ProxiedTileID extends ref_properties.OverscaledTileID {
-    constructor(tileID, proxyTileKey, posMatrix) {
+    constructor(tileID, proxyTileKey, projMatrix) {
         super(tileID.overscaledZ, tileID.wrap, tileID.canonical.z, tileID.canonical.x, tileID.canonical.y);
         this.proxyTileKey = proxyTileKey;
-        this.posMatrix = posMatrix;
+        this.projMatrix = projMatrix;
     }
 }
 class Terrain extends ref_properties.Elevation {
@@ -34939,6 +35481,7 @@ class Terrain extends ref_properties.Elevation {
         if (!this.enabled)
             return;
         this.enabled = false;
+        this._sharedDepthStencil = undefined;
         this.proxySourceCache.deallocRenderCache();
         if (this._style) {
             for (const id in this._style._sourceCaches) {
@@ -34984,7 +35527,7 @@ class Terrain extends ref_properties.Elevation {
         const psc = this.proxySourceCache;
         const tr = this.painter.transform;
         if (this._initializing) {
-            this._initializing = tr._centerAltitude === 0 && this.getAtPoint(ref_properties.MercatorCoordinate.fromLngLat(tr.center), -1) === -1;
+            this._initializing = tr._centerAltitude === 0 && this.getAtPointOrZero(ref_properties.MercatorCoordinate.fromLngLat(tr.center), -1) === -1;
             this._emptyDEMTextureDirty = !this._initializing;
         }
         const options = this.painter.options;
@@ -34992,7 +35535,7 @@ class Terrain extends ref_properties.Elevation {
         this._invalidateRenderCache = false;
         const coords = this.proxyCoords = psc.getIds().map(id => {
             const tileID = psc.getTileByID(id).tileID;
-            tileID.posMatrix = tr.calculatePosMatrix(tileID.toUnwrapped());
+            tileID.projMatrix = tr.calculateProjMatrix(tileID.toUnwrapped());
             return tileID;
         });
         sortByDistanceToCamera(coords, this.painter);
@@ -35022,9 +35565,9 @@ class Terrain extends ref_properties.Elevation {
         this._assignTerrainTiles(coords);
         this._prepareDEMTextures();
         this._setupDrapedRenderBatches();
+        this._initFBOPool();
         this._setupRenderCache(previousProxyToSource);
         this.renderingToTexture = false;
-        this._initFBOPool();
         this._updateTimestamp = ref_properties.exported.now();
         const visibleKeys = {};
         this._visibleDemTiles = [];
@@ -35338,14 +35881,22 @@ class Terrain extends ref_properties.Elevation {
         tex.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
         const fb = context.createFramebuffer(bufferSize[0], bufferSize[1], false);
         fb.colorAttachment.set(tex.texture);
+        fb.depthAttachment = new DepthStencilAttachment(context, fb.framebuffer);
+        if (this._sharedDepthStencil === undefined) {
+            this._sharedDepthStencil = context.createRenderbuffer(context.gl.DEPTH_STENCIL, bufferSize[0], bufferSize[1]);
+            this._stencilRef = 0;
+            fb.depthAttachment.set(this._sharedDepthStencil);
+            context.clear({ stencil: 0 });
+        } else {
+            fb.depthAttachment.set(this._sharedDepthStencil);
+        }
         if (context.extTextureFilterAnisotropic && !context.extTextureFilterAnisotropicForceOff) {
             gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
         }
         return {
             fb,
             tex,
-            dirty: false,
-            ref: 1
+            dirty: false
         };
     }
     _initFBOPool() {
@@ -35521,7 +36072,7 @@ class Terrain extends ref_properties.Elevation {
             return;
         }
         const fbo = this.currentFBO;
-        const fb = fbo.fb;
+        fbo.fb;
         let stencilRange;
         if (layer.isTileClipped()) {
             stencilRange = proxiedCoords.length;
@@ -35541,18 +36092,12 @@ class Terrain extends ref_properties.Elevation {
             this._overlapStencilType = false;
             return;
         }
-        if (!fb.depthAttachment) {
-            const renderbuffer = context.createRenderbuffer(context.gl.DEPTH_STENCIL, fb.width, fb.height);
-            fb.depthAttachment = new DepthStencilAttachment(context, fb.framebuffer);
-            fb.depthAttachment.set(renderbuffer);
+        if (this._stencilRef + stencilRange > 255) {
             context.clear({ stencil: 0 });
+            this._stencilRef = 0;
         }
-        if (fbo.ref + stencilRange > 255) {
-            context.clear({ stencil: 0 });
-            fbo.ref = 0;
-        }
-        fbo.ref += stencilRange;
-        this._overlapStencilMode.ref = fbo.ref;
+        this._stencilRef += stencilRange;
+        this._overlapStencilMode.ref = this._stencilRef;
         if (layer.isTileClipped()) {
             this._renderTileClippingMasks(proxiedCoords, this._overlapStencilMode.ref);
         }
@@ -35579,7 +36124,7 @@ class Terrain extends ref_properties.Elevation {
             program.draw(context, gl.TRIANGLES, ref_properties.DepthMode.disabled, new ref_properties.StencilMode({
                 func: gl.ALWAYS,
                 mask: 0
-            }, id, 255, gl.KEEP, gl.KEEP, gl.REPLACE), ref_properties.ColorMode.disabled, ref_properties.CullFaceMode.disabled, clippingMaskUniformValues(tileID.posMatrix), '$clipping', painter.tileExtentBuffer, painter.quadTriangleIndexBuffer, painter.tileExtentSegments);
+            }, id, 255, gl.KEEP, gl.KEEP, gl.REPLACE), ref_properties.ColorMode.disabled, ref_properties.CullFaceMode.disabled, clippingMaskUniformValues(tileID.projMatrix), '$clipping', painter.tileExtentBuffer, painter.quadTriangleIndexBuffer, painter.tileExtentSegments);
         }
     }
     pointCoordinate(screenPoint) {
@@ -35607,7 +36152,8 @@ class Terrain extends ref_properties.Elevation {
         ];
         const dir = ref_properties.subtract([], far.slice(0, 3), p);
         ref_properties.normalize(dir, dir);
-        const distanceAlongRay = this.raycast(p, dir, this._exaggeration);
+        const exaggeration = this._exaggeration;
+        const distanceAlongRay = this.raycast(p, dir, exaggeration);
         if (distanceAlongRay === null || !distanceAlongRay)
             return null;
         ref_properties.scaleAndAdd(p, p, dir, distanceAlongRay);
@@ -35959,6 +36505,31 @@ function defaultTerrainUniforms(encoding) {
     };
 }
 
+const fogUniforms = (context, locations) => ({
+    'u_fog_matrix': new ref_properties.UniformMatrix4f(context, locations.u_fog_matrix),
+    'u_fog_range': new ref_properties.Uniform2f(context, locations.u_fog_range),
+    'u_fog_color': new ref_properties.Uniform4f(context, locations.u_fog_color),
+    'u_fog_horizon_blend': new ref_properties.Uniform1f(context, locations.u_fog_horizon_blend),
+    'u_fog_temporal_offset': new ref_properties.Uniform1f(context, locations.u_fog_temporal_offset)
+});
+const fogUniformValues = (painter, fog, tileID, fogOpacity) => {
+    const fogColor = fog.properties.get('color');
+    const temporalOffset = painter.frameCounter / 1000 % 1;
+    const fogColorUnpremultiplied = [
+        fogColor.r / fogColor.a,
+        fogColor.g / fogColor.a,
+        fogColor.b / fogColor.a,
+        fogOpacity
+    ];
+    return {
+        'u_fog_matrix': tileID ? painter.transform.calculateFogTileMatrix(tileID) : painter.identityMat,
+        'u_fog_range': fog.getFovAdjustedRange(painter.transform._fov),
+        'u_fog_color': fogColorUnpremultiplied,
+        'u_fog_horizon_blend': fog.properties.get('horizon-blend'),
+        'u_fog_temporal_offset': temporalOffset
+    };
+};
+
 function getTokenizedAttributesAndUniforms(array) {
     const result = [];
     for (let i = 0; i < array.length; i++) {
@@ -35993,8 +36564,8 @@ class Program {
         }
         let defines = configuration ? configuration.defines() : [];
         defines = defines.concat(fixedDefines.map(define => `#define ${ define }`));
-        const fragmentSource = defines.concat(prelude.fragmentSource, source.fragmentSource).join('\n');
-        const vertexSource = defines.concat(prelude.vertexSource, preludeTerrain.vertexSource, source.vertexSource).join('\n');
+        const fragmentSource = defines.concat(prelude.fragmentSource, preludeCommonSource, preludeFog.fragmentSource, source.fragmentSource).join('\n');
+        const vertexSource = defines.concat(prelude.vertexSource, preludeCommonSource, preludeFog.vertexSource, preludeTerrain.vertexSource, source.vertexSource).join('\n');
         const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
         if (gl.isContextLost()) {
             this.failedToCreate = true;
@@ -36037,16 +36608,32 @@ class Program {
         if (fixedDefines.indexOf('TERRAIN') !== -1) {
             this.terrainUniforms = terrainUniforms(context, uniformLocations);
         }
+        if (fixedDefines.indexOf('FOG') !== -1) {
+            this.fogUniforms = fogUniforms(context, uniformLocations);
+        }
     }
-    setTerrainUniformValues(context, terrainUnformValues) {
+    setTerrainUniformValues(context, terrainUniformValues) {
         if (!this.terrainUniforms)
             return;
         const uniforms = this.terrainUniforms;
         if (this.failedToCreate)
             return;
         context.program.set(this.program);
-        for (const name in terrainUnformValues) {
-            uniforms[name].set(terrainUnformValues[name]);
+        for (const name in terrainUniformValues) {
+            uniforms[name].set(terrainUniformValues[name]);
+        }
+    }
+    setFogUniformValues(context, fogUniformsValues) {
+        if (!this.fogUniforms)
+            return;
+        const uniforms = this.fogUniforms;
+        if (this.failedToCreate)
+            return;
+        context.program.set(this.program);
+        for (const name in fogUniformsValues) {
+            if (uniforms[name].location) {
+                uniforms[name].set(fogUniformsValues[name]);
+            }
         }
     }
     draw(context, drawMode, depthMode, stencilMode, colorMode, cullFaceMode, uniformValues, layerID, layoutVertexBuffer, indexBuffer, segments, currentProperties, zoom, configuration, dynamicLayoutBuffer, dynamicLayoutBuffer2) {
@@ -36245,7 +36832,7 @@ const circleUniformValues = (painter, coord, tile, layer) => {
     }
     return {
         'u_camera_to_center_distance': transform.cameraToCenterDistance,
-        'u_matrix': painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('circle-translate'), layer.paint.get('circle-translate-anchor')),
+        'u_matrix': painter.translatePosMatrix(coord.projMatrix, tile, layer.paint.get('circle-translate'), layer.paint.get('circle-translate-anchor')),
         'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_extrude_scale': extrudeScale
     };
@@ -36365,15 +36952,12 @@ const linePatternUniforms = (context, locations) => ({
 });
 const lineSDFUniforms = (context, locations) => ({
     'u_matrix': new ref_properties.UniformMatrix4f(context, locations.u_matrix),
+    'u_texsize': new ref_properties.Uniform2f(context, locations.u_texsize),
     'u_ratio': new ref_properties.Uniform1f(context, locations.u_ratio),
     'u_device_pixel_ratio': new ref_properties.Uniform1f(context, locations.u_device_pixel_ratio),
     'u_units_to_pixels': new ref_properties.Uniform2f(context, locations.u_units_to_pixels),
-    'u_patternscale_a': new ref_properties.Uniform2f(context, locations.u_patternscale_a),
-    'u_patternscale_b': new ref_properties.Uniform2f(context, locations.u_patternscale_b),
-    'u_sdfgamma': new ref_properties.Uniform1f(context, locations.u_sdfgamma),
     'u_image': new ref_properties.Uniform1i(context, locations.u_image),
-    'u_tex_y_a': new ref_properties.Uniform1f(context, locations.u_tex_y_a),
-    'u_tex_y_b': new ref_properties.Uniform1f(context, locations.u_tex_y_b),
+    'u_scale': new ref_properties.Uniform3f(context, locations.u_scale),
     'u_mix': new ref_properties.Uniform1f(context, locations.u_mix)
 });
 const lineUniformValues = (painter, tile, layer, matrix) => {
@@ -36415,28 +36999,16 @@ const linePatternUniformValues = (painter, tile, layer, crossfade, matrix) => {
         ]
     };
 };
-const lineSDFUniformValues = (painter, tile, layer, dasharray, crossfade, matrix) => {
-    const transform = painter.transform;
-    const lineAtlas = painter.lineAtlas;
-    const tileRatio = calculateTileRatio(tile, transform);
-    const round = layer.layout.get('line-cap') === 'round';
-    const posA = lineAtlas.getDash(dasharray.from, round);
-    const posB = lineAtlas.getDash(dasharray.to, round);
-    const widthA = posA.width * crossfade.fromScale;
-    const widthB = posB.width * crossfade.toScale;
+const lineSDFUniformValues = (painter, tile, layer, crossfade, matrix) => {
+    const tileZoomRatio = calculateTileRatio(tile, painter.transform);
     return ref_properties.extend(lineUniformValues(painter, tile, layer, matrix), {
-        'u_patternscale_a': [
-            tileRatio / widthA,
-            -posA.height / 2
+        'u_texsize': tile.lineAtlasTexture.size,
+        'u_scale': [
+            tileZoomRatio,
+            crossfade.fromScale,
+            crossfade.toScale
         ],
-        'u_patternscale_b': [
-            tileRatio / widthB,
-            -posB.height / 2
-        ],
-        'u_sdfgamma': lineAtlas.width / (Math.min(widthA, widthB) * 256 * painter.devicePixelRatio) / 2,
         'u_image': 0,
-        'u_tex_y_a': posA.y,
-        'u_tex_y_b': posB.y,
         'u_mix': crossfade.t
     });
 };
@@ -36444,7 +37016,7 @@ function calculateTileRatio(tile, transform) {
     return 1 / pixelsToTileUnits(tile, 1, transform.tileZoom);
 }
 function calculateMatrix(painter, tile, layer, matrix) {
-    return painter.translatePosMatrix(matrix ? matrix : tile.tileID.posMatrix, tile, layer.paint.get('line-translate'), layer.paint.get('line-translate-anchor'));
+    return painter.translatePosMatrix(matrix ? matrix : tile.tileID.projMatrix, tile, layer.paint.get('line-translate'), layer.paint.get('line-translate-anchor'));
 }
 
 const rasterUniforms = (context, locations) => ({
@@ -36732,9 +37304,9 @@ function drawCollisionDebug(painter, sourceCache, layer, coords, translate, tran
         const bucket = tile.getBucket(layer);
         if (!bucket)
             continue;
-        let posMatrix = coord.posMatrix;
+        let posMatrix = coord.projMatrix;
         if (translate[0] !== 0 || translate[1] !== 0) {
-            posMatrix = painter.translatePosMatrix(coord.posMatrix, tile, translate, translateAnchor);
+            posMatrix = painter.translatePosMatrix(coord.projMatrix, tile, translate, translateAnchor);
         }
         const buffers = isText ? bucket.textCollisionBox : bucket.iconCollisionBox;
         const circleArray = bucket.collisionCircleArray;
@@ -36848,13 +37420,13 @@ function updateVariableAnchors(coords, painter, layer, sourceCache, rotationAlig
         const sizeData = bucket.textSizeData;
         const size = ref_properties.evaluateSizeForZoom(sizeData, tr.zoom);
         const pixelToTileScale = pixelsToTileUnits(tile, 1, painter.transform.zoom);
-        const labelPlaneMatrix = getLabelPlaneMatrix(coord.posMatrix, pitchWithMap, rotateWithMap, painter.transform, pixelToTileScale);
+        const labelPlaneMatrix = getLabelPlaneMatrix(coord.projMatrix, pitchWithMap, rotateWithMap, painter.transform, pixelToTileScale);
         const updateTextFitIcon = layer.layout.get('icon-text-fit') !== 'none' && bucket.hasIconData();
         if (size) {
             const tileScale = Math.pow(2, tr.zoom - tile.tileID.overscaledZ);
             const elevation = tr.elevation;
             const getElevation = elevation ? p => elevation.getAtTileOffset(coord, p.x, p.y) : _ => 0;
-            updateVariableAnchorsForBucket(bucket, rotateWithMap, pitchWithMap, variableOffsets, ref_properties.symbolSize, tr, labelPlaneMatrix, coord.posMatrix, tileScale, size, updateTextFitIcon, getElevation);
+            updateVariableAnchorsForBucket(bucket, rotateWithMap, pitchWithMap, variableOffsets, ref_properties.symbolSize, tr, labelPlaneMatrix, coord.projMatrix, tileScale, size, updateTextFitIcon, getElevation);
         }
     }
 }
@@ -36979,17 +37551,17 @@ function drawLayerSymbols(painter, sourceCache, layer, coords, isText, translate
             texSize = tile.imageAtlasTexture.size;
         }
         const s = pixelsToTileUnits(tile, 1, painter.transform.zoom);
-        const labelPlaneMatrix = getLabelPlaneMatrix(coord.posMatrix, pitchWithMap, rotateWithMap, painter.transform, s);
+        const labelPlaneMatrix = getLabelPlaneMatrix(coord.projMatrix, pitchWithMap, rotateWithMap, painter.transform, s);
         const labelPlaneMatrixInv = painter.terrain && pitchWithMap && alongLine ? ref_properties.invert(new Float32Array(16), labelPlaneMatrix) : identityMat4;
-        const glCoordMatrix = getGlCoordMatrix(coord.posMatrix, pitchWithMap, rotateWithMap, painter.transform, s);
+        const glCoordMatrix = getGlCoordMatrix(coord.projMatrix, pitchWithMap, rotateWithMap, painter.transform, s);
         const hasVariableAnchors = variablePlacement && bucket.hasTextData();
         const updateTextFitIcon = layer.layout.get('icon-text-fit') !== 'none' && hasVariableAnchors && bucket.hasIconData();
         if (alongLine) {
             const elevation = tr.elevation;
             const getElevation = elevation ? p => elevation.getAtTileOffset(coord, p.x, p.y) : null;
-            updateLineLabels(bucket, coord.posMatrix, painter, isText, labelPlaneMatrix, glCoordMatrix, pitchWithMap, keepUpright, getElevation);
+            updateLineLabels(bucket, coord.projMatrix, painter, isText, labelPlaneMatrix, glCoordMatrix, pitchWithMap, keepUpright, getElevation);
         }
-        const matrix = painter.translatePosMatrix(coord.posMatrix, tile, translate, translateAnchor), uLabelPlaneMatrix = alongLine || isText && variablePlacement || updateTextFitIcon ? identityMat4 : labelPlaneMatrix, uglCoordMatrix = painter.translatePosMatrix(glCoordMatrix, tile, translate, translateAnchor, true);
+        const matrix = painter.translatePosMatrix(coord.projMatrix, tile, translate, translateAnchor), uLabelPlaneMatrix = alongLine || isText && variablePlacement || updateTextFitIcon ? identityMat4 : labelPlaneMatrix, uglCoordMatrix = painter.translatePosMatrix(glCoordMatrix, tile, translate, translateAnchor, true);
         const hasHalo = isSDF && layer.paint.get(isText ? 'text-halo-width' : 'icon-halo-width').constantOr(1) !== 0;
         let uniformValues;
         if (isSDF) {
@@ -37128,6 +37700,7 @@ function drawCircles(painter, sourceCache, layer, coords) {
         const segments = segmentsState.segments;
         if (painter.terrain)
             painter.terrain.setupElevationDraw(tile, program, { useDepthForOcclusion: true });
+        painter.prepareDrawProgram(context, program, tile.tileID.toUnwrapped());
         program.draw(context, gl.TRIANGLES, depthMode, stencilMode, colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, layoutVertexBuffer, indexBuffer, segments, layer.paint, painter.transform.zoom, programConfiguration);
     }
 }
@@ -37164,7 +37737,8 @@ function drawHeatmap(painter, sourceCache, layer, coords) {
             const {zoom} = painter.transform;
             if (painter.terrain)
                 painter.terrain.setupElevationDraw(tile, program);
-            program.draw(context, gl.TRIANGLES, ref_properties.DepthMode.disabled, stencilMode, colorMode, ref_properties.CullFaceMode.disabled, heatmapUniformValues(coord.posMatrix, tile, zoom, layer.paint.get('heatmap-intensity')), layer.id, bucket.layoutVertexBuffer, bucket.indexBuffer, bucket.segments, layer.paint, painter.transform.zoom, programConfiguration);
+            painter.prepareDrawProgram(context, program, coord.toUnwrapped());
+            program.draw(context, gl.TRIANGLES, ref_properties.DepthMode.disabled, stencilMode, colorMode, ref_properties.CullFaceMode.disabled, heatmapUniformValues(coord.projMatrix, tile, zoom, layer.paint.get('heatmap-intensity')), layer.id, bucket.layoutVertexBuffer, bucket.indexBuffer, bucket.segments, layer.paint, painter.transform.zoom, programConfiguration);
         }
         context.viewport.set([
             0,
@@ -37233,7 +37807,9 @@ function drawLine(painter, sourceCache, layer, coords) {
         return;
     const depthMode = painter.depthModeForSublayer(0, ref_properties.DepthMode.ReadOnly);
     const colorMode = painter.colorModeForRenderPass();
-    const dasharray = layer.paint.get('line-dasharray');
+    const dasharrayProperty = layer.paint.get('line-dasharray');
+    const dasharray = dasharrayProperty.constantOr(1);
+    const capProperty = layer.layout.get('line-cap');
     const patternProperty = layer.paint.get('line-pattern');
     const image = patternProperty.constantOr(1);
     const gradient = layer.paint.get('line-gradient');
@@ -37241,7 +37817,6 @@ function drawLine(painter, sourceCache, layer, coords) {
     const programId = image ? 'linePattern' : dasharray ? 'lineSDF' : gradient ? 'lineGradient' : 'line';
     const context = painter.context;
     const gl = context.gl;
-    let firstTile = true;
     for (const coord of coords) {
         const tile = sourceCache.getTile(coord);
         if (image && !tile.patternsLoaded())
@@ -37251,9 +37826,7 @@ function drawLine(painter, sourceCache, layer, coords) {
             continue;
         painter.prepareDrawTile(coord);
         const programConfiguration = bucket.programConfigurations.get(layer.id);
-        const prevProgram = painter.context.program.get();
         const program = painter.useProgram(programId, programConfiguration);
-        const programChanged = firstTile || program.program !== prevProgram;
         const constantPattern = patternProperty.constantOr(null);
         if (constantPattern && tile.imageAtlas) {
             const atlas = tile.imageAtlas;
@@ -37262,15 +37835,25 @@ function drawLine(painter, sourceCache, layer, coords) {
             if (posTo && posFrom)
                 programConfiguration.setConstantPatternPositions(posTo, posFrom);
         }
-        const matrix = painter.terrain ? coord.posMatrix : null;
-        const uniformValues = image ? linePatternUniformValues(painter, tile, layer, crossfade, matrix) : dasharray ? lineSDFUniformValues(painter, tile, layer, dasharray, crossfade, matrix) : gradient ? lineGradientUniformValues(painter, tile, layer, matrix, bucket.lineClipsArray.length) : lineUniformValues(painter, tile, layer, matrix);
+        const constantDash = dasharrayProperty.constantOr(null);
+        const constantCap = capProperty.constantOr(null);
+        if (!image && constantDash && constantCap && tile.lineAtlas) {
+            const atlas = tile.lineAtlas;
+            const posTo = atlas.getDash(constantDash.to, constantCap);
+            const posFrom = atlas.getDash(constantDash.from, constantCap);
+            if (posTo && posFrom)
+                programConfiguration.setConstantPatternPositions(posTo, posFrom);
+        }
+        const matrix = painter.terrain ? coord.projMatrix : null;
+        const uniformValues = image ? linePatternUniformValues(painter, tile, layer, crossfade, matrix) : dasharray ? lineSDFUniformValues(painter, tile, layer, crossfade, matrix) : gradient ? lineGradientUniformValues(painter, tile, layer, matrix, bucket.lineClipsArray.length) : lineUniformValues(painter, tile, layer, matrix);
         if (image) {
             context.activeTexture.set(gl.TEXTURE0);
             tile.imageAtlasTexture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
             programConfiguration.updatePaintBuffers(crossfade);
-        } else if (dasharray && (programChanged || painter.lineAtlas.dirty)) {
+        } else if (dasharray) {
             context.activeTexture.set(gl.TEXTURE0);
-            painter.lineAtlas.bind(context);
+            tile.lineAtlasTexture.bind(gl.LINEAR, gl.REPEAT);
+            programConfiguration.updatePaintBuffers(crossfade);
         } else if (gradient) {
             const layerGradient = bucket.gradients[layer.id];
             let gradientTexture = layerGradient.texture;
@@ -37302,8 +37885,8 @@ function drawLine(painter, sourceCache, layer, coords) {
             context.activeTexture.set(gl.TEXTURE0);
             gradientTexture.bind(layer.stepInterpolant ? gl.NEAREST : gl.LINEAR, gl.CLAMP_TO_EDGE);
         }
+        painter.prepareDrawProgram(context, program, coord.toUnwrapped());
         program.draw(context, gl.TRIANGLES, depthMode, painter.stencilModeForClipping(coord), colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, bucket.layoutVertexBuffer, bucket.indexBuffer, bucket.segments, layer.paint, painter.transform.zoom, programConfiguration, bucket.layoutVertexBuffer2);
-        firstTile = false;
     }
 }
 
@@ -37361,7 +37944,7 @@ function drawFillTiles(painter, sourceCache, layer, coords, depthMode, colorMode
             if (posTo && posFrom)
                 programConfiguration.setConstantPatternPositions(posTo, posFrom);
         }
-        const tileMatrix = painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('fill-translate'), layer.paint.get('fill-translate-anchor'));
+        const tileMatrix = painter.translatePosMatrix(coord.projMatrix, tile, layer.paint.get('fill-translate'), layer.paint.get('fill-translate-anchor'));
         if (!isOutline) {
             indexBuffer = bucket.indexBuffer;
             segments = bucket.segments;
@@ -37375,6 +37958,7 @@ function drawFillTiles(painter, sourceCache, layer, coords, depthMode, colorMode
             ];
             uniformValues = programName === 'fillOutlinePattern' && image ? fillOutlinePatternUniformValues(tileMatrix, painter, crossfade, tile, drawingBufferSize) : fillOutlineUniformValues(tileMatrix, drawingBufferSize);
         }
+        painter.prepareDrawProgram(painter.context, program, coord.toUnwrapped());
         program.draw(painter.context, drawMode, depthMode, painter.stencilModeForClipping(coord), colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, bucket.layoutVertexBuffer, indexBuffer, segments, layer.paint, painter.transform.zoom, programConfiguration);
     }
 }
@@ -37434,9 +38018,10 @@ function drawExtrusionTiles(painter, source, layer, coords, depthMode, stencilMo
             if (posTo && posFrom)
                 programConfiguration.setConstantPatternPositions(posTo, posFrom);
         }
-        const matrix = painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('fill-extrusion-translate'), layer.paint.get('fill-extrusion-translate-anchor'));
+        const matrix = painter.translatePosMatrix(coord.projMatrix, tile, layer.paint.get('fill-extrusion-translate'), layer.paint.get('fill-extrusion-translate-anchor'));
         const shouldUseVerticalGradient = layer.paint.get('fill-extrusion-vertical-gradient');
         const uniformValues = image ? fillExtrusionPatternUniformValues(matrix, painter, shouldUseVerticalGradient, opacity, coord, crossfade, tile) : fillExtrusionUniformValues(matrix, painter, shouldUseVerticalGradient, opacity);
+        painter.prepareDrawProgram(context, program, coord.toUnwrapped());
         program.draw(context, context.gl.TRIANGLES, depthMode, stencilMode, colorMode, ref_properties.CullFaceMode.backCCW, uniformValues, layer.id, bucket.layoutVertexBuffer, bucket.indexBuffer, bucket.segments, layer.paint, painter.transform.zoom, programConfiguration, painter.terrain ? bucket.centroidVertexBuffer : null);
     }
 }
@@ -37633,10 +38218,11 @@ function drawRaster(painter, sourceCache, layer, tileIDs, variableOffsets, isIni
     const align = !painter.options.moving;
     for (const coord of coords) {
         const depthMode = renderingToTexture ? ref_properties.DepthMode.disabled : painter.depthModeForSublayer(coord.overscaledZ - minTileZ, layer.paint.get('raster-opacity') === 1 ? ref_properties.DepthMode.ReadWrite : ref_properties.DepthMode.ReadOnly, gl.LESS);
+        const unwrappedTileID = coord.toUnwrapped();
         const tile = sourceCache.getTile(coord);
         if (renderingToTexture && !(tile && tile.hasData()))
             continue;
-        const posMatrix = renderingToTexture ? coord.posMatrix : painter.transform.calculatePosMatrix(coord.toUnwrapped(), align);
+        const projMatrix = renderingToTexture ? coord.projMatrix : painter.transform.calculateProjMatrix(unwrappedTileID, align);
         const stencilMode = painter.terrain && renderingToTexture ? painter.terrain.stencilModeForRTTOverlap(coord) : stencilModes[coord.overscaledZ];
         const rasterFadeDuration = isInitialLoad ? 0 : layer.paint.get('raster-fade-duration');
         tile.registerFadeDuration(rasterFadeDuration);
@@ -37659,10 +38245,11 @@ function drawRaster(painter, sourceCache, layer, tileIDs, variableOffsets, isIni
         } else {
             tile.texture.bind(textureFilter, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
         }
-        const uniformValues = rasterUniformValues(posMatrix, parentTL || [
+        const uniformValues = rasterUniformValues(projMatrix, parentTL || [
             0,
             0
         ], parentScaleBy || 1, fade, layer);
+        painter.prepareDrawProgram(context, program, unwrappedTileID);
         if (source instanceof ImageSource) {
             program.draw(context, gl.TRIANGLES, depthMode, ref_properties.StencilMode.disabled, colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, source.boundsBuffer, painter.quadTriangleIndexBuffer, source.boundsSegments);
         } else {
@@ -37697,12 +38284,14 @@ function drawBackground(painter, sourceCache, layer, coords) {
     }
     const crossfade = layer.getCrossfadeParameters();
     for (const tileID of tileIDs) {
-        const matrix = coords ? tileID.posMatrix : painter.transform.calculatePosMatrix(tileID.toUnwrapped());
+        const unwrappedTileID = tileID.toUnwrapped();
+        const matrix = coords ? tileID.projMatrix : painter.transform.calculateProjMatrix(unwrappedTileID);
         painter.prepareDrawTile(tileID);
         const uniformValues = image ? backgroundPatternUniformValues(matrix, opacity, painter, image, {
             tileID,
             tileSize
         }, crossfade) : backgroundUniformValues(matrix, opacity, color);
+        painter.prepareDrawProgram(context, program, unwrappedTileID);
         program.draw(context, gl.TRIANGLES, depthMode, stencilMode, colorMode, ref_properties.CullFaceMode.disabled, uniformValues, layer.id, painter.tileExtentBuffer, painter.quadTriangleIndexBuffer, painter.tileExtentSegments);
     }
 }
@@ -37750,7 +38339,7 @@ function drawDebug(painter, sourceCache, coords) {
 function drawDebugTile(painter, sourceCache, coord) {
     const context = painter.context;
     const gl = context.gl;
-    const posMatrix = coord.posMatrix;
+    const posMatrix = coord.projMatrix;
     const program = painter.useProgram('debug');
     const tile = sourceCache.getTileByID(coord.key);
     if (painter.terrain)
@@ -37900,6 +38489,7 @@ function drawSkyboxGradient(painter, layer, depthMode, opacity, temporalOffset) 
     }
     colorRampTexture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
     const uniformValues = skyboxGradientUniformValues(transform.skyboxMatrix, layer.getCenter(painter, false), layer.paint.get('sky-gradient-radius'), opacity, temporalOffset);
+    painter.prepareDrawProgram(context, program);
     program.draw(context, gl.TRIANGLES, depthMode, ref_properties.StencilMode.disabled, painter.colorModeForRenderPass(), ref_properties.CullFaceMode.backCW, uniformValues, 'skyboxGradient', layer.skyboxGeometry.vertexBuffer, layer.skyboxGeometry.indexBuffer, layer.skyboxGeometry.segment);
 }
 function drawSkyboxFromCapture(painter, layer, depthMode, opacity, temporalOffset) {
@@ -37910,6 +38500,7 @@ function drawSkyboxFromCapture(painter, layer, depthMode, opacity, temporalOffse
     context.activeTexture.set(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, layer.skyboxTexture);
     const uniformValues = skyboxUniformValues(transform.skyboxMatrix, layer.getCenter(painter, false), 0, opacity, temporalOffset);
+    painter.prepareDrawProgram(context, program);
     program.draw(context, gl.TRIANGLES, depthMode, ref_properties.StencilMode.disabled, painter.colorModeForRenderPass(), ref_properties.CullFaceMode.backCW, uniformValues, 'skybox', layer.skyboxGeometry.vertexBuffer, layer.skyboxGeometry.indexBuffer, layer.skyboxGeometry.segment);
 }
 function drawSkyboxFace(context, layer, program, faceRotate, sunDirection, i) {
@@ -38015,6 +38606,17 @@ class Painter {
         this.transform.elevation = enabled ? terrain : null;
         terrain.update(style, this.transform, cameraChanging);
     }
+    _updateFog(style) {
+        const fog = style.fog;
+        if (!fog || fog.getOpacity(this.transform.pitch) < 1 || fog.properties.get('horizon-blend') < 0.03) {
+            this.transform.fogCullDistSq = null;
+            return;
+        }
+        const [start, end] = fog.getFovAdjustedRange(this.transform._fov);
+        const fogBoundFraction = 0.78;
+        const fogCullDist = start + (end - start) * fogBoundFraction;
+        this.transform.fogCullDistSq = fogCullDist * fogCullDist;
+    }
     get terrain() {
         return this._terrain && this._terrain.enabled ? this._terrain : null;
     }
@@ -38087,6 +38689,7 @@ class Painter {
                 0
             ])
         }, context.gl.RGBA);
+        this.identityMat = ref_properties.create$1();
         const gl = this.context.gl;
         this.stencilClearMode = new ref_properties.StencilMode({
             func: gl.ALWAYS,
@@ -38126,7 +38729,7 @@ class Painter {
             program.draw(context, gl.TRIANGLES, ref_properties.DepthMode.disabled, new ref_properties.StencilMode({
                 func: gl.ALWAYS,
                 mask: 0
-            }, id, 255, gl.KEEP, gl.KEEP, gl.REPLACE), ref_properties.ColorMode.disabled, ref_properties.CullFaceMode.disabled, clippingMaskUniformValues(tileID.posMatrix), '$clipping', this.tileExtentBuffer, this.quadTriangleIndexBuffer, this.tileExtentSegments);
+            }, id, 255, gl.KEEP, gl.KEEP, gl.REPLACE), ref_properties.ColorMode.disabled, ref_properties.CullFaceMode.disabled, clippingMaskUniformValues(tileID.projMatrix), '$clipping', this.tileExtentBuffer, this.quadTriangleIndexBuffer, this.tileExtentSegments);
         }
     }
     stencilModeFor3D() {
@@ -38274,8 +38877,12 @@ class Painter {
             this.width,
             this.height
         ]);
+        let clearColor = ref_properties.Color.transparent;
+        if (this.style.fog) {
+            clearColor = this.style.fog.properties.get('color');
+        }
         this.context.clear({
-            color: options.showOverdrawInspector ? ref_properties.Color.black : ref_properties.Color.transparent,
+            color: options.showOverdrawInspector ? ref_properties.Color.black : clearColor,
             depth: 1
         });
         this.clearStencil();
@@ -38449,9 +39056,13 @@ class Painter {
     currentGlobalDefines() {
         const terrain = this.terrain && !this.terrain.renderingToTexture;
         const rtt = this.terrain && this.terrain.renderingToTexture;
+        const fog = this.style && this.style.fog;
         const defines = [];
         if (terrain)
             defines.push('TERRAIN');
+        if (fog && !rtt && fog.getOpacity(this.transform.pitch) !== 0) {
+            defines.push('FOG');
+        }
         if (rtt)
             defines.push('RENDER_TO_TEXTURE');
         if (this._showOverdrawInspector)
@@ -38513,6 +39124,18 @@ class Painter {
             this.terrain.prepareDrawTile(tileID);
         }
     }
+    prepareDrawProgram(context, program, tileID) {
+        if (this.terrain && this.terrain.renderingToTexture) {
+            return;
+        }
+        const fog = this.style.fog;
+        if (fog) {
+            const fogOpacity = fog.getOpacity(this.transform.pitch);
+            if (fogOpacity !== 0) {
+                program.setFogUniformValues(context, fogUniformValues(this, fog, tileID, fogOpacity));
+            }
+        }
+    }
     setTileLoadedFlag(flag) {
         this.tileLoaded = flag;
     }
@@ -38532,6 +39155,17 @@ class Painter {
             canvasCopies: this.frameCopies,
             timeStamps: this.loadTimeStamps
         };
+    }
+    averageElevationNeedsEasing() {
+        if (!this.transform._elevation)
+            return false;
+        const fog = this.style && this.style.fog;
+        if (!fog)
+            return false;
+        const fogOpacity = fog.getOpacity(this.transform.pitch);
+        if (fogOpacity === 0)
+            return false;
+        return true;
     }
 }
 
@@ -38659,7 +39293,7 @@ class FreeCameraOptions {
         if (!this.position) {
             return;
         }
-        const altitude = this._elevation ? this._elevation.getAtPoint(ref_properties.MercatorCoordinate.fromLngLat(location)) : 0;
+        const altitude = this._elevation ? this._elevation.getAtPointOrZero(ref_properties.MercatorCoordinate.fromLngLat(location)) : 0;
         const pos = this.position;
         const target = ref_properties.MercatorCoordinate.fromLngLat(location, altitude);
         const forward = [
@@ -38755,6 +39389,19 @@ class FreeCamera {
         ref_properties.invert(cameraToWorld, this.getWorldToCamera(worldSize, pixelsPerMeter));
         return cameraToWorld;
     }
+    getWorldToCameraPosition(worldSize, pixelsPerMeter, uniformScale) {
+        const invPosition = this.position;
+        ref_properties.scale(invPosition, invPosition, -worldSize);
+        const matrix = new Float64Array(16);
+        ref_properties.fromScaling(matrix, [
+            uniformScale,
+            uniformScale,
+            uniformScale
+        ]);
+        ref_properties.translate(matrix, matrix, invPosition);
+        matrix[10] *= pixelsPerMeter;
+        return matrix;
+    }
     getWorldToCamera(worldSize, pixelsPerMeter) {
         const matrix = new Float64Array(16);
         const invOrientation = new Float64Array(4);
@@ -38777,6 +39424,11 @@ class FreeCamera {
         const matrix = new Float64Array(16);
         ref_properties.perspective(matrix, fovy, aspectRatio, nearZ, farZ);
         return matrix;
+    }
+    getDistanceToElevation(elevationMeters) {
+        const z0 = elevationMeters === 0 ? 0 : ref_properties.mercatorZfromAltitude(elevationMeters, this.position[1]);
+        const f = this.forward();
+        return (z0 - this.position[2]) / f[2];
     }
     clone() {
         return new FreeCamera([...this.position], [...this.orientation]);
@@ -38804,10 +39456,12 @@ class Transform {
         this._pitch = 0;
         this._unmodified = true;
         this._edgeInsets = new EdgeInsets();
-        this._posMatrixCache = {};
-        this._alignedPosMatrixCache = {};
+        this._projMatrixCache = {};
+        this._alignedProjMatrixCache = {};
+        this._fogTileMatrixCache = {};
         this._camera = new FreeCamera();
         this._centerAltitude = 0;
+        this._averageElevation = 0;
         this.cameraElevationReference = 'ground';
         this._horizonShift = 0.1;
     }
@@ -38826,6 +39480,7 @@ class Transform {
         clone.angle = this.angle;
         clone._fov = this._fov;
         clone._pitch = this._pitch;
+        clone._averageElevation = this._averageElevation;
         clone._unmodified = this._unmodified;
         clone._edgeInsets = this._edgeInsets.clone();
         clone._camera = this._camera.clone();
@@ -38909,6 +39564,16 @@ class Transform {
     get worldSize() {
         return this.tileSize * this.scale;
     }
+    get cameraWorldSize() {
+        const distance = Math.max(this._camera.getDistanceToElevation(this._averageElevation), Number.EPSILON);
+        return this._worldSizeFromZoom(this._zoomFromMercatorZ(distance));
+    }
+    get pixelsPerMeter() {
+        return ref_properties.mercatorZfromAltitude(1, this.center.lat) * this.worldSize;
+    }
+    get cameraPixelsPerMeter() {
+        return ref_properties.mercatorZfromAltitude(1, this.center.lat) * this.cameraWorldSize;
+    }
     get centerOffset() {
         return this.centerPoint._sub(this.size._div(2));
     }
@@ -38950,6 +39615,13 @@ class Transform {
         this._fov = fov / 180 * Math.PI;
         this._calcMatrices();
     }
+    get averageElevation() {
+        return this._averageElevation;
+    }
+    set averageElevation(averageElevation) {
+        this._averageElevation = averageElevation;
+        this._calcFogMatrices();
+    }
     get zoom() {
         return this._zoom;
     }
@@ -38974,7 +39646,7 @@ class Transform {
     _updateCenterElevation() {
         if (!this._elevation)
             return false;
-        const elevationAtCenter = this._elevation.getAtPoint(ref_properties.MercatorCoordinate.fromLngLat(this.center), -1);
+        const elevationAtCenter = this._elevation.getAtPointOrZero(ref_properties.MercatorCoordinate.fromLngLat(this.center), -1);
         if (elevationAtCenter === -1) {
             this._cameraZoom = null;
             return false;
@@ -38986,6 +39658,49 @@ class Transform {
         const height = this.cameraToCenterDistance / this.worldSize;
         const terrainElevation = ref_properties.mercatorZfromAltitude(this._centerAltitude, this.center.lat);
         this._cameraZoom = this._zoomFromMercatorZ(terrainElevation + height);
+    }
+    sampleAverageElevation() {
+        if (!this._elevation)
+            return 0;
+        const elevation = this._elevation;
+        const elevationSamplePoints = [
+            [
+                0.5,
+                0.2
+            ],
+            [
+                0.3,
+                0.5
+            ],
+            [
+                0.5,
+                0.5
+            ],
+            [
+                0.7,
+                0.5
+            ],
+            [
+                0.5,
+                0.8
+            ]
+        ];
+        const horizon = this.horizonLineFromTop();
+        let elevationSum = 0;
+        let weightSum = 0;
+        for (let i = 0; i < elevationSamplePoints.length; i++) {
+            const pt = new ref_properties.pointGeometry(elevationSamplePoints[i][0] * this.width, horizon + elevationSamplePoints[i][1] * (this.height - horizon));
+            const hit = elevation.pointCoordinate(pt);
+            if (!hit)
+                continue;
+            const distanceToHit = Math.hypot(hit[0] - this._camera.position[0], hit[1] - this._camera.position[1]);
+            const weight = 1 / distanceToHit;
+            elevationSum += hit[3] * weight;
+            weightSum += weight;
+        }
+        if (weightSum === 0)
+            return NaN;
+        return elevationSum / weightSum;
     }
     get center() {
         return this._center;
@@ -39012,7 +39727,7 @@ class Transform {
         if (this._cameraZoom == null || !this._elevation)
             return;
         const cameraZoom = this._cameraZoom;
-        const elevationAtCenter = this._elevation.getAtPoint(ref_properties.MercatorCoordinate.fromLngLat(this.center));
+        const elevationAtCenter = this._elevation.getAtPointOrZero(ref_properties.MercatorCoordinate.fromLngLat(this.center));
         const mercatorElevation = ref_properties.mercatorZfromAltitude(elevationAtCenter, this.center.lat);
         const altitude = this._mercatorZfromZoom(cameraZoom);
         const minHeight = this._mercatorZfromZoom(this._maxZoom);
@@ -39302,6 +40017,57 @@ class Transform {
                 stack.push(child);
             }
         }
+        if (this.fogCullDistSq) {
+            const fogCullDistSq = this.fogCullDistSq;
+            result.splice(0, result.length, ...result.filter(entry => {
+                const min = [
+                    0,
+                    0,
+                    0,
+                    1
+                ];
+                const max = [
+                    ref_properties.EXTENT,
+                    ref_properties.EXTENT,
+                    0,
+                    1
+                ];
+                const fogTileMatrix = this.calculateFogTileMatrix(entry.tileID.toUnwrapped());
+                ref_properties.transformMat4(min, min, fogTileMatrix);
+                ref_properties.transformMat4(max, max, fogTileMatrix);
+                const sqDist = ref_properties.getAABBPointSquareDist(min, max);
+                if (sqDist === 0) {
+                    return true;
+                }
+                let overHorizonLine = false;
+                const horizonLineFromTop = this.horizonLineFromTop();
+                if (sqDist > fogCullDistSq && horizonLineFromTop !== 0) {
+                    const projMatrix = this.calculateProjMatrix(entry.tileID.toUnwrapped());
+                    let minmax;
+                    if (useElevationData && this._elevation) {
+                        minmax = this._elevation.getMinMaxForTile(entry.tileID);
+                    }
+                    if (!minmax) {
+                        minmax = {
+                            min: minRange,
+                            max: maxRange
+                        };
+                    }
+                    const cornerFar = ref_properties.furthestTileCorner(this.bearing);
+                    const farX = cornerFar[0] * ref_properties.EXTENT;
+                    const farY = cornerFar[1] * ref_properties.EXTENT;
+                    const worldFar = [
+                        farX,
+                        farY,
+                        minmax.max
+                    ];
+                    ref_properties.transformMat4$1(worldFar, worldFar, projMatrix);
+                    const screenCoordY = (1 - worldFar[1]) * this.height * 0.5;
+                    overHorizonLine = screenCoordY < horizonLineFromTop;
+                }
+                return sqDist < fogCullDistSq || overHorizonLine;
+            }));
+        }
         const cover = result.sort((a, b) => a.distanceSq - b.distanceSq).map(a => a.tileID);
         return cover;
     }
@@ -39478,7 +40244,7 @@ class Transform {
         }
     }
     _coordinatePoint(coord, sampleTerrainIn3D) {
-        const elevation = sampleTerrainIn3D && this.elevation ? this.elevation.getAtPoint(coord, this._centerAltitude) : this._centerAltitude;
+        const elevation = sampleTerrainIn3D && this.elevation ? this.elevation.getAtPointOrZero(coord, this._centerAltitude) : this._centerAltitude;
         const p = [
             coord.x * this.worldSize,
             coord.y * this.worldSize,
@@ -39554,14 +40320,9 @@ class Transform {
             ];
         }
     }
-    calculatePosMatrix(unwrappedTileID, aligned = false) {
-        const posMatrixKey = unwrappedTileID.key;
-        const cache = aligned ? this._alignedPosMatrixCache : this._posMatrixCache;
-        if (cache[posMatrixKey]) {
-            return cache[posMatrixKey];
-        }
+    calculatePosMatrix(unwrappedTileID, worldSize) {
         const canonical = unwrappedTileID.canonical;
-        const scale = this.worldSize / this.zoomScale(canonical.z);
+        const scale = worldSize / this.zoomScale(canonical.z);
         const unwrappedX = canonical.x + Math.pow(2, canonical.z) * unwrappedTileID.wrap;
         const posMatrix = ref_properties.identity(new Float64Array(16));
         ref_properties.translate(posMatrix, posMatrix, [
@@ -39574,9 +40335,29 @@ class Transform {
             scale / ref_properties.EXTENT,
             1
         ]);
+        return posMatrix;
+    }
+    calculateFogTileMatrix(unwrappedTileID) {
+        const fogTileMatrixKey = unwrappedTileID.key;
+        const cache = this._fogTileMatrixCache;
+        if (cache[fogTileMatrixKey]) {
+            return cache[fogTileMatrixKey];
+        }
+        const posMatrix = this.calculatePosMatrix(unwrappedTileID, this.cameraWorldSize);
+        ref_properties.multiply(posMatrix, this.worldToFogMatrix, posMatrix);
+        cache[fogTileMatrixKey] = new Float32Array(posMatrix);
+        return cache[fogTileMatrixKey];
+    }
+    calculateProjMatrix(unwrappedTileID, aligned = false) {
+        const projMatrixKey = unwrappedTileID.key;
+        const cache = aligned ? this._alignedProjMatrixCache : this._projMatrixCache;
+        if (cache[projMatrixKey]) {
+            return cache[projMatrixKey];
+        }
+        const posMatrix = this.calculatePosMatrix(unwrappedTileID, this.worldSize);
         ref_properties.multiply(posMatrix, aligned ? this.alignedProjMatrix : this.projMatrix, posMatrix);
-        cache[posMatrixKey] = new Float32Array(posMatrix);
-        return cache[posMatrixKey];
+        cache[projMatrixKey] = new Float32Array(posMatrix);
+        return cache[projMatrixKey];
     }
     customLayerMatrix() {
         return this.mercatorMatrix.slice();
@@ -39588,7 +40369,7 @@ class Transform {
         this._updateCameraState();
         const start = this._camera.position;
         const dir = this._camera.forward();
-        if (start.z <= 0 || dir[2] >= 0)
+        if (start[2] <= 0 || dir[2] >= 0)
             return;
         const metersToMerc = ref_properties.mercatorZfromAltitude(1, this._center.lat);
         start[2] /= metersToMerc;
@@ -39618,7 +40399,7 @@ class Transform {
             return;
         const elevation = this._elevation;
         this._updateCameraState();
-        const elevationAtCamera = elevation.getAtPoint(this._camera.mercatorPosition);
+        const elevationAtCamera = elevation.getAtPointOrZero(this._camera.mercatorPosition);
         const minHeight = this._minimumHeightOverTerrain() * Math.cos(ref_properties.degToRad(this._maxPitch));
         const terrainElevation = ref_properties.mercatorZfromAltitude(elevationAtCamera, this._center.lat);
         const cameraHeight = this._camera.position[2] - terrainElevation;
@@ -39728,7 +40509,7 @@ class Transform {
         const halfFov = this._fov / 2;
         const offset = this.centerOffset;
         this.cameraToCenterDistance = 0.5 / Math.tan(halfFov) * this.height;
-        const pixelsPerMeter = ref_properties.mercatorZfromAltitude(1, this.center.lat) * this.worldSize;
+        const pixelsPerMeter = this.pixelsPerMeter;
         this._updateCameraState();
         const groundAngle = Math.PI / 2 + this._pitch;
         const fovAboveCenter = this.fovAboveCenter;
@@ -39805,12 +40586,33 @@ class Transform {
         ]);
         this.glCoordMatrix = m;
         this.pixelMatrix = ref_properties.multiply(new Float64Array(16), this.labelPlaneMatrix, this.projMatrix);
+        this._calcFogMatrices();
         m = ref_properties.invert(new Float64Array(16), this.pixelMatrix);
         if (!m)
             throw new Error('failed to invert matrix');
         this.pixelMatrixInverse = m;
-        this._posMatrixCache = {};
-        this._alignedPosMatrixCache = {};
+        this._projMatrixCache = {};
+        this._alignedProjMatrixCache = {};
+    }
+    _calcFogMatrices() {
+        this._fogTileMatrixCache = {};
+        const cameraWorldSize = this.cameraWorldSize;
+        const cameraPixelsPerMeter = this.cameraPixelsPerMeter;
+        const cameraPos = this._camera.position;
+        const windowScaleFactor = 1 / this.height;
+        const metersToPixel = [
+            cameraWorldSize,
+            cameraWorldSize,
+            cameraPixelsPerMeter
+        ];
+        ref_properties.scale(metersToPixel, metersToPixel, windowScaleFactor);
+        ref_properties.scale(cameraPos, cameraPos, -1);
+        ref_properties.multiply$1(cameraPos, cameraPos, metersToPixel);
+        const m = ref_properties.create$1();
+        ref_properties.translate(m, m, cameraPos);
+        ref_properties.scale$1(m, m, metersToPixel);
+        this.mercatorFogMatrix = m;
+        this.worldToFogMatrix = this._camera.getWorldToCameraPosition(cameraWorldSize, cameraPixelsPerMeter, windowScaleFactor);
     }
     _updateCameraState() {
         if (!this.height)
@@ -40355,9 +41157,13 @@ class BoxZoomHandler {
             this._fireEvent('boxzoomstart', e);
         }
         const minX = Math.min(p0.x, pos.x), maxX = Math.max(p0.x, pos.x), minY = Math.min(p0.y, pos.y), maxY = Math.max(p0.y, pos.y);
-        DOM.setTransform(this._box, `translate(${ minX }px,${ minY }px)`);
-        this._box.style.width = `${ maxX - minX }px`;
-        this._box.style.height = `${ maxY - minY }px`;
+        this._map._requestDomTask(() => {
+            if (this._box) {
+                DOM.setTransform(this._box, `translate(${ minX }px,${ minY }px)`);
+                this._box.style.width = `${ maxX - minX }px`;
+                this._box.style.height = `${ maxY - minY }px`;
+            }
+        });
     }
     mouseupWindow(e, point) {
         if (!this._active)
@@ -42943,6 +43749,535 @@ class TaskQueue {
     }
 }
 
+function smartWrap (lngLat, priorPos, transform) {
+    lngLat = new ref_properties.LngLat(lngLat.lng, lngLat.lat);
+    if (priorPos) {
+        const left = new ref_properties.LngLat(lngLat.lng - 360, lngLat.lat);
+        const right = new ref_properties.LngLat(lngLat.lng + 360, lngLat.lat);
+        const withinWrap = Math.ceil(Math.abs(lngLat.lng - transform.center.lng) / 360) * 360;
+        const delta = transform.locationPoint(lngLat).distSqr(priorPos);
+        const offscreen = priorPos.x < 0 || priorPos.y < 0 || priorPos.x > transform.width || priorPos.y > transform.height;
+        if (transform.locationPoint(left).distSqr(priorPos) < delta && (offscreen || Math.abs(left.lng - transform.center.lng) < withinWrap)) {
+            lngLat = left;
+        } else if (transform.locationPoint(right).distSqr(priorPos) < delta && (offscreen || Math.abs(right.lng - transform.center.lng) < withinWrap)) {
+            lngLat = right;
+        }
+    }
+    while (Math.abs(lngLat.lng - transform.center.lng) > 180) {
+        const pos = transform.locationPoint(lngLat);
+        if (pos.x >= 0 && pos.y >= 0 && pos.x <= transform.width && pos.y <= transform.height) {
+            break;
+        }
+        if (lngLat.lng > transform.center.lng) {
+            lngLat.lng -= 360;
+        } else {
+            lngLat.lng += 360;
+        }
+    }
+    return lngLat;
+}
+
+const anchorTranslate = {
+    'center': 'translate(-50%,-50%)',
+    'top': 'translate(-50%,0)',
+    'top-left': 'translate(0,0)',
+    'top-right': 'translate(-100%,0)',
+    'bottom': 'translate(-50%,-100%)',
+    'bottom-left': 'translate(0,-100%)',
+    'bottom-right': 'translate(-100%,-100%)',
+    'left': 'translate(0,-50%)',
+    'right': 'translate(-100%,-50%)'
+};
+function applyAnchorClass(element, anchor, prefix) {
+    const classList = element.classList;
+    for (const key in anchorTranslate) {
+        classList.remove(`mapboxgl-${ prefix }-anchor-${ key }`);
+    }
+    classList.add(`mapboxgl-${ prefix }-anchor-${ anchor }`);
+}
+
+const TERRAIN_OCCLUDED_OPACITY = 0.2;
+class Marker extends ref_properties.Evented {
+    constructor(options, legacyOptions) {
+        super();
+        if (options instanceof ref_properties.window.HTMLElement || legacyOptions) {
+            options = ref_properties.extend({ element: options }, legacyOptions);
+        }
+        ref_properties.bindAll([
+            '_update',
+            '_onMove',
+            '_onUp',
+            '_addDragHandler',
+            '_onMapClick',
+            '_onKeyPress',
+            '_clearFadeTimer'
+        ], this);
+        this._anchor = options && options.anchor || 'center';
+        this._color = options && options.color || '#3FB1CE';
+        this._scale = options && options.scale || 1;
+        this._draggable = options && options.draggable || false;
+        this._clickTolerance = options && options.clickTolerance || 0;
+        this._isDragging = false;
+        this._state = 'inactive';
+        this._rotation = options && options.rotation || 0;
+        this._rotationAlignment = options && options.rotationAlignment || 'auto';
+        this._pitchAlignment = options && options.pitchAlignment && options.pitchAlignment !== 'auto' ? options.pitchAlignment : this._rotationAlignment;
+        if (!options || !options.element) {
+            this._defaultMarker = true;
+            this._element = DOM.create('div');
+            this._element.setAttribute('aria-label', 'Map marker');
+            const svg = DOM.createNS('http://www.w3.org/2000/svg', 'svg');
+            const defaultHeight = 41;
+            const defaultWidth = 27;
+            svg.setAttributeNS(null, 'display', 'block');
+            svg.setAttributeNS(null, 'height', `${ defaultHeight }px`);
+            svg.setAttributeNS(null, 'width', `${ defaultWidth }px`);
+            svg.setAttributeNS(null, 'viewBox', `0 0 ${ defaultWidth } ${ defaultHeight }`);
+            const markerLarge = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            markerLarge.setAttributeNS(null, 'stroke', 'none');
+            markerLarge.setAttributeNS(null, 'stroke-width', '1');
+            markerLarge.setAttributeNS(null, 'fill', 'none');
+            markerLarge.setAttributeNS(null, 'fill-rule', 'evenodd');
+            const page1 = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            page1.setAttributeNS(null, 'fill-rule', 'nonzero');
+            const shadow = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            shadow.setAttributeNS(null, 'transform', 'translate(3.0, 29.0)');
+            shadow.setAttributeNS(null, 'fill', '#000000');
+            const ellipses = [
+                {
+                    'rx': '10.5',
+                    'ry': '5.25002273'
+                },
+                {
+                    'rx': '10.5',
+                    'ry': '5.25002273'
+                },
+                {
+                    'rx': '9.5',
+                    'ry': '4.77275007'
+                },
+                {
+                    'rx': '8.5',
+                    'ry': '4.29549936'
+                },
+                {
+                    'rx': '7.5',
+                    'ry': '3.81822308'
+                },
+                {
+                    'rx': '6.5',
+                    'ry': '3.34094679'
+                },
+                {
+                    'rx': '5.5',
+                    'ry': '2.86367051'
+                },
+                {
+                    'rx': '4.5',
+                    'ry': '2.38636864'
+                }
+            ];
+            for (const data of ellipses) {
+                const ellipse = DOM.createNS('http://www.w3.org/2000/svg', 'ellipse');
+                ellipse.setAttributeNS(null, 'opacity', '0.04');
+                ellipse.setAttributeNS(null, 'cx', '10.5');
+                ellipse.setAttributeNS(null, 'cy', '5.80029008');
+                ellipse.setAttributeNS(null, 'rx', data['rx']);
+                ellipse.setAttributeNS(null, 'ry', data['ry']);
+                shadow.appendChild(ellipse);
+            }
+            const background = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            background.setAttributeNS(null, 'fill', this._color);
+            const bgPath = DOM.createNS('http://www.w3.org/2000/svg', 'path');
+            bgPath.setAttributeNS(null, 'd', 'M27,13.5 C27,19.074644 20.250001,27.000002 14.75,34.500002 C14.016665,35.500004 12.983335,35.500004 12.25,34.500002 C6.7499993,27.000002 0,19.222562 0,13.5 C0,6.0441559 6.0441559,0 13.5,0 C20.955844,0 27,6.0441559 27,13.5 Z');
+            background.appendChild(bgPath);
+            const border = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            border.setAttributeNS(null, 'opacity', '0.25');
+            border.setAttributeNS(null, 'fill', '#000000');
+            const borderPath = DOM.createNS('http://www.w3.org/2000/svg', 'path');
+            borderPath.setAttributeNS(null, 'd', 'M13.5,0 C6.0441559,0 0,6.0441559 0,13.5 C0,19.222562 6.7499993,27 12.25,34.5 C13,35.522727 14.016664,35.500004 14.75,34.5 C20.250001,27 27,19.074644 27,13.5 C27,6.0441559 20.955844,0 13.5,0 Z M13.5,1 C20.415404,1 26,6.584596 26,13.5 C26,15.898657 24.495584,19.181431 22.220703,22.738281 C19.945823,26.295132 16.705119,30.142167 13.943359,33.908203 C13.743445,34.180814 13.612715,34.322738 13.5,34.441406 C13.387285,34.322738 13.256555,34.180814 13.056641,33.908203 C10.284481,30.127985 7.4148684,26.314159 5.015625,22.773438 C2.6163816,19.232715 1,15.953538 1,13.5 C1,6.584596 6.584596,1 13.5,1 Z');
+            border.appendChild(borderPath);
+            const maki = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            maki.setAttributeNS(null, 'transform', 'translate(6.0, 7.0)');
+            maki.setAttributeNS(null, 'fill', '#FFFFFF');
+            const circleContainer = DOM.createNS('http://www.w3.org/2000/svg', 'g');
+            circleContainer.setAttributeNS(null, 'transform', 'translate(8.0, 8.0)');
+            const circle1 = DOM.createNS('http://www.w3.org/2000/svg', 'circle');
+            circle1.setAttributeNS(null, 'fill', '#000000');
+            circle1.setAttributeNS(null, 'opacity', '0.25');
+            circle1.setAttributeNS(null, 'cx', '5.5');
+            circle1.setAttributeNS(null, 'cy', '5.5');
+            circle1.setAttributeNS(null, 'r', '5.4999962');
+            const circle2 = DOM.createNS('http://www.w3.org/2000/svg', 'circle');
+            circle2.setAttributeNS(null, 'fill', '#FFFFFF');
+            circle2.setAttributeNS(null, 'cx', '5.5');
+            circle2.setAttributeNS(null, 'cy', '5.5');
+            circle2.setAttributeNS(null, 'r', '5.4999962');
+            circleContainer.appendChild(circle1);
+            circleContainer.appendChild(circle2);
+            page1.appendChild(shadow);
+            page1.appendChild(background);
+            page1.appendChild(border);
+            page1.appendChild(maki);
+            page1.appendChild(circleContainer);
+            svg.appendChild(page1);
+            svg.setAttributeNS(null, 'height', `${ defaultHeight * this._scale }px`);
+            svg.setAttributeNS(null, 'width', `${ defaultWidth * this._scale }px`);
+            this._element.appendChild(svg);
+            this._offset = ref_properties.pointGeometry.convert(options && options.offset || [
+                0,
+                -14
+            ]);
+        } else {
+            this._element = options.element;
+            this._offset = ref_properties.pointGeometry.convert(options && options.offset || [
+                0,
+                0
+            ]);
+        }
+        this._element.classList.add('mapboxgl-marker');
+        this._element.addEventListener('dragstart', e => {
+            e.preventDefault();
+        });
+        this._element.addEventListener('mousedown', e => {
+            e.preventDefault();
+        });
+        applyAnchorClass(this._element, this._anchor, 'marker');
+        this._popup = null;
+    }
+    addTo(map) {
+        this.remove();
+        this._map = map;
+        map.getCanvasContainer().appendChild(this._element);
+        map.on('move', this._update);
+        map.on('moveend', this._update);
+        map.on('remove', this._clearFadeTimer);
+        map._addMarker(this);
+        this.setDraggable(this._draggable);
+        this._update();
+        this._map.on('click', this._onMapClick);
+        return this;
+    }
+    remove() {
+        if (this._map) {
+            this._map.off('click', this._onMapClick);
+            this._map.off('move', this._update);
+            this._map.off('moveend', this._update);
+            this._map.off('mousedown', this._addDragHandler);
+            this._map.off('touchstart', this._addDragHandler);
+            this._map.off('mouseup', this._onUp);
+            this._map.off('touchend', this._onUp);
+            this._map.off('mousemove', this._onMove);
+            this._map.off('touchmove', this._onMove);
+            this._map.off('remove', this._clearFadeTimer);
+            this._map._removeMarker(this);
+            delete this._map;
+        }
+        this._clearFadeTimer();
+        DOM.remove(this._element);
+        if (this._popup)
+            this._popup.remove();
+        return this;
+    }
+    getLngLat() {
+        return this._lngLat;
+    }
+    setLngLat(lnglat) {
+        this._lngLat = ref_properties.LngLat.convert(lnglat);
+        this._pos = null;
+        if (this._popup)
+            this._popup.setLngLat(this._lngLat);
+        this._update();
+        return this;
+    }
+    getElement() {
+        return this._element;
+    }
+    setPopup(popup) {
+        if (this._popup) {
+            this._popup.remove();
+            this._popup = null;
+            this._element.removeEventListener('keypress', this._onKeyPress);
+            if (!this._originalTabIndex) {
+                this._element.removeAttribute('tabindex');
+            }
+        }
+        if (popup) {
+            if (!('offset' in popup.options)) {
+                const markerHeight = 41 - 5.8 / 2;
+                const markerRadius = 13.5;
+                const linearOffset = Math.sqrt(Math.pow(markerRadius, 2) / 2);
+                popup.options.offset = this._defaultMarker ? {
+                    'top': [
+                        0,
+                        0
+                    ],
+                    'top-left': [
+                        0,
+                        0
+                    ],
+                    'top-right': [
+                        0,
+                        0
+                    ],
+                    'bottom': [
+                        0,
+                        -markerHeight
+                    ],
+                    'bottom-left': [
+                        linearOffset,
+                        (markerHeight - markerRadius + linearOffset) * -1
+                    ],
+                    'bottom-right': [
+                        -linearOffset,
+                        (markerHeight - markerRadius + linearOffset) * -1
+                    ],
+                    'left': [
+                        markerRadius,
+                        (markerHeight - markerRadius) * -1
+                    ],
+                    'right': [
+                        -markerRadius,
+                        (markerHeight - markerRadius) * -1
+                    ]
+                } : this._offset;
+            }
+            this._popup = popup;
+            if (this._lngLat)
+                this._popup.setLngLat(this._lngLat);
+            this._originalTabIndex = this._element.getAttribute('tabindex');
+            if (!this._originalTabIndex) {
+                this._element.setAttribute('tabindex', '0');
+            }
+            this._element.addEventListener('keypress', this._onKeyPress);
+        }
+        return this;
+    }
+    _onKeyPress(e) {
+        const code = e.code;
+        const legacyCode = e.charCode || e.keyCode;
+        if (code === 'Space' || code === 'Enter' || legacyCode === 32 || legacyCode === 13) {
+            this.togglePopup();
+        }
+    }
+    _onMapClick(e) {
+        const targetElement = e.originalEvent.target;
+        const element = this._element;
+        if (this._popup && (targetElement === element || element.contains(targetElement))) {
+            this.togglePopup();
+        }
+    }
+    getPopup() {
+        return this._popup;
+    }
+    togglePopup() {
+        const popup = this._popup;
+        if (!popup)
+            return this;
+        else if (popup.isOpen())
+            popup.remove();
+        else
+            popup.addTo(this._map);
+        return this;
+    }
+    _evaluateOpacity() {
+        const position = this._pos ? this._pos.sub(this._transformedOffset()) : null;
+        if (!this._withinScreenBounds(position)) {
+            this._clearFadeTimer();
+            return;
+        }
+        const mapLocation = this._map.unproject(position);
+        let terrainOccluded = false;
+        if (this._map.getTerrain()) {
+            const camera = this._map.getFreeCameraOptions();
+            if (camera.position) {
+                const cameraPos = camera.position.toLngLat();
+                const offsetDistance = cameraPos.distanceTo(mapLocation);
+                const distance = cameraPos.distanceTo(this._lngLat);
+                terrainOccluded = offsetDistance < distance * 0.9;
+            }
+        }
+        const fogOpacity = this._map._queryFogOpacity(mapLocation);
+        const opacity = (1 - fogOpacity) * (terrainOccluded ? TERRAIN_OCCLUDED_OPACITY : 1);
+        this._element.style.opacity = `${ opacity }`;
+        if (this._popup)
+            this._popup._setOpacity(`${ opacity }`);
+        this._fadeTimer = null;
+    }
+    _clearFadeTimer() {
+        if (this._fadeTimer) {
+            clearTimeout(this._fadeTimer);
+            this._fadeTimer = null;
+        }
+    }
+    _withinScreenBounds(position) {
+        const tr = this._map.transform;
+        return !!position && position.x >= 0 && position.x < tr.width && position.y >= 0 && position.y < tr.height;
+    }
+    _update(e) {
+        if (!this._map)
+            return;
+        if (this._map.transform.renderWorldCopies) {
+            this._lngLat = smartWrap(this._lngLat, this._pos, this._map.transform);
+        }
+        this._pos = this._map.project(this._lngLat)._add(this._transformedOffset());
+        let rotation = '';
+        if (this._rotationAlignment === 'viewport' || this._rotationAlignment === 'auto') {
+            rotation = `rotateZ(${ this._rotation }deg)`;
+        } else if (this._rotationAlignment === 'map') {
+            rotation = `rotateZ(${ this._rotation - this._map.getBearing() }deg)`;
+        }
+        let pitch = '';
+        if (this._pitchAlignment === 'viewport' || this._pitchAlignment === 'auto') {
+            pitch = 'rotateX(0deg)';
+        } else if (this._pitchAlignment === 'map') {
+            pitch = `rotateX(${ this._map.getPitch() }deg)`;
+        }
+        if (!e || e.type === 'moveend') {
+            this._pos = this._pos.round();
+        }
+        this._map._requestDomTask(() => {
+            if (!this._map)
+                return;
+            if (this._element && this._pos && this._anchor) {
+                DOM.setTransform(this._element, `${ anchorTranslate[this._anchor] } translate(${ this._pos.x }px, ${ this._pos.y }px) ${ pitch } ${ rotation }`);
+            }
+            if ((this._map.getTerrain() || this._map.getFog()) && !this._fadeTimer) {
+                this._fadeTimer = setTimeout(this._evaluateOpacity.bind(this), 60);
+            }
+        });
+    }
+    _transformedOffset() {
+        if (!this._defaultMarker)
+            return this._offset;
+        const tr = this._map.transform;
+        const offset = this._offset.mult(this._scale);
+        if (this._rotationAlignment === 'map')
+            offset._rotate(tr.angle);
+        if (this._pitchAlignment === 'map')
+            offset.y *= Math.cos(tr._pitch);
+        return offset;
+    }
+    getOffset() {
+        return this._offset;
+    }
+    setOffset(offset) {
+        this._offset = ref_properties.pointGeometry.convert(offset);
+        this._update();
+        return this;
+    }
+    _onMove(e) {
+        if (!this._isDragging) {
+            const clickTolerance = this._clickTolerance || this._map._clickTolerance;
+            this._isDragging = e.point.dist(this._pointerdownPos) >= clickTolerance;
+        }
+        if (!this._isDragging)
+            return;
+        this._pos = e.point.sub(this._positionDelta);
+        this._lngLat = this._map.unproject(this._pos);
+        this.setLngLat(this._lngLat);
+        this._element.style.pointerEvents = 'none';
+        if (this._state === 'pending') {
+            this._state = 'active';
+            this.fire(new ref_properties.Event('dragstart'));
+        }
+        this.fire(new ref_properties.Event('drag'));
+    }
+    _onUp() {
+        this._element.style.pointerEvents = 'auto';
+        this._positionDelta = null;
+        this._pointerdownPos = null;
+        this._isDragging = false;
+        this._map.off('mousemove', this._onMove);
+        this._map.off('touchmove', this._onMove);
+        if (this._state === 'active') {
+            this.fire(new ref_properties.Event('dragend'));
+        }
+        this._state = 'inactive';
+    }
+    _addDragHandler(e) {
+        if (this._element.contains(e.originalEvent.target)) {
+            e.preventDefault();
+            this._positionDelta = e.point.sub(this._pos).add(this._transformedOffset());
+            this._pointerdownPos = e.point;
+            this._state = 'pending';
+            this._map.on('mousemove', this._onMove);
+            this._map.on('touchmove', this._onMove);
+            this._map.once('mouseup', this._onUp);
+            this._map.once('touchend', this._onUp);
+        }
+    }
+    setDraggable(shouldBeDraggable) {
+        this._draggable = !!shouldBeDraggable;
+        if (this._map) {
+            if (shouldBeDraggable) {
+                this._map.on('mousedown', this._addDragHandler);
+                this._map.on('touchstart', this._addDragHandler);
+            } else {
+                this._map.off('mousedown', this._addDragHandler);
+                this._map.off('touchstart', this._addDragHandler);
+            }
+        }
+        return this;
+    }
+    isDraggable() {
+        return this._draggable;
+    }
+    setRotation(rotation) {
+        this._rotation = rotation || 0;
+        this._update();
+        return this;
+    }
+    getRotation() {
+        return this._rotation;
+    }
+    setRotationAlignment(alignment) {
+        this._rotationAlignment = alignment || 'auto';
+        this._update();
+        return this;
+    }
+    getRotationAlignment() {
+        return this._rotationAlignment;
+    }
+    setPitchAlignment(alignment) {
+        this._pitchAlignment = alignment && alignment !== 'auto' ? alignment : this._rotationAlignment;
+        this._update();
+        return this;
+    }
+    getPitchAlignment() {
+        return this._pitchAlignment;
+    }
+}
+
+class EasedVariable {
+    constructor(initialValue) {
+        this.jumpTo(initialValue);
+    }
+    getValue(timeStamp) {
+        if (timeStamp <= this._startTime)
+            return this._start;
+        if (timeStamp >= this._endTime)
+            return this._end;
+        const t = ref_properties.easeCubicInOut((timeStamp - this._startTime) / (this._endTime - this._startTime));
+        return this._start * (1 - t) + this._end * t;
+    }
+    isEasing(timeStamp) {
+        return timeStamp >= this._startTime && timeStamp <= this._endTime;
+    }
+    jumpTo(value) {
+        this._startTime = -Infinity;
+        this._endTime = -Infinity;
+        this._start = value;
+        this._end = value;
+    }
+    easeTo(value, timeStamp, duration) {
+        this._start = this.getValue(timeStamp);
+        this._end = value;
+        this._startTime = timeStamp;
+        this._endTime = timeStamp + duration;
+    }
+}
+
 const defaultLocale = {
     'AttributionControl.ToggleAttribution': 'Toggle attribution',
     'AttributionControl.MapFeedback': 'Map feedback',
@@ -42962,6 +44297,10 @@ const defaultLocale = {
 };
 
 const {HTMLImageElement, HTMLElement, ImageBitmap} = ref_properties.window;
+const AVERAGE_ELEVATION_SAMPLING_INTERVAL = 500;
+const AVERAGE_ELEVATION_EASE_TIME = 300;
+const AVERAGE_ELEVATION_EASE_THRESHOLD = 1;
+const AVERAGE_ELEVATION_CHANGE_THRESHOLD = 0.0001;
 const defaultMinZoom = -2;
 const defaultMaxZoom = 22;
 const defaultMinPitch = 0;
@@ -43041,10 +44380,14 @@ class Map extends Camera {
         this._collectResourceTiming = options.collectResourceTiming;
         this._optimizeForTerrain = options.optimizeForTerrain;
         this._renderTaskQueue = new TaskQueue();
+        this._domRenderTaskQueue = new TaskQueue();
         this._controls = [];
+        this._markers = [];
         this._mapId = ref_properties.uniqueId();
         this._locale = ref_properties.extend({}, defaultLocale, options.locale);
         this._clickTolerance = options.clickTolerance;
+        this._averageElevationLastSampledAt = -Infinity;
+        this._averageElevation = new EasedVariable(0);
         this._requestManager = new ref_properties.RequestManager(options.transformRequest, options.accessToken, options.testMode);
         this._silenceAuthErrors = !!options.testMode;
         if (typeof options.container === 'string') {
@@ -43650,10 +44993,32 @@ class Map extends Camera {
     setTerrain(terrain) {
         this._lazyInitEmptyStyle();
         this.style.setTerrain(terrain);
+        this._averageElevationLastSampledAt = -Infinity;
         return this._update(true);
     }
     getTerrain() {
-        return this.style.getTerrain();
+        return this.style ? this.style.getTerrain() : null;
+    }
+    setFog(fog) {
+        this._lazyInitEmptyStyle();
+        this.style.setFog(fog);
+        return this._update(true);
+    }
+    getFog() {
+        return this.style ? this.style.getFog() : null;
+    }
+    _queryFogOpacity(lnglat) {
+        if (!this.style || !this.style.fog)
+            return 0;
+        return this.style.fog.getOpacityAtLatLng(ref_properties.LngLat.convert(lnglat), this.transform);
+    }
+    queryTerrainElevation(lnglat, options) {
+        const elevation = this.transform.elevation;
+        if (elevation) {
+            options = ref_properties.extend({}, { exaggerated: true }, options);
+            return elevation.getAtPoint(ref_properties.MercatorCoordinate.fromLngLat(lnglat), null, options.exaggerated);
+        }
+        return null;
     }
     setFeatureState(feature, state) {
         this.style.setFeatureState(feature, state);
@@ -43730,6 +45095,15 @@ class Map extends Camera {
         this._canvas.style.width = `${ width }px`;
         this._canvas.style.height = `${ height }px`;
     }
+    _addMarker(marker) {
+        this._markers.push(marker);
+    }
+    _removeMarker(marker) {
+        const index = this._markers.indexOf(marker);
+        if (index !== -1) {
+            this._markers.splice(index, 1);
+        }
+    }
     _setupPainter() {
         const attributes = ref_properties.extend({}, supported.webGLContextAttributes, {
             failIfMajorPerformanceCaveat: this._failIfMajorPerformanceCaveat,
@@ -43789,17 +45163,26 @@ class Map extends Camera {
     _cancelRenderFrame(id) {
         this._renderTaskQueue.remove(id);
     }
+    _requestDomTask(callback) {
+        if (!this.isMoving() && this.loaded()) {
+            callback();
+        } else {
+            this._domRenderTaskQueue.add(callback);
+        }
+    }
     _render(paintStartTimeStamp) {
-        let gpuTimer, frameStartTime = 0;
+        let gpuTimer;
         const extTimerQuery = this.painter.context.extTimerQuery;
+        const frameStartTime = ref_properties.exported.now();
         if (this.listens('gpu-timing-frame')) {
             gpuTimer = extTimerQuery.createQueryEXT();
             extTimerQuery.beginQueryEXT(extTimerQuery.TIME_ELAPSED_EXT, gpuTimer);
-            frameStartTime = ref_properties.exported.now();
         }
+        let averageElevationChanged = this._updateAverageElevation(frameStartTime);
         this.painter.context.setDirty();
         this.painter.setBaseState();
         this._renderTaskQueue.run(paintStartTimeStamp);
+        this._domRenderTaskQueue.run(paintStartTimeStamp);
         if (this._removed)
             return;
         let crossFading = false;
@@ -43822,8 +45205,14 @@ class Map extends Camera {
             }
             this.style.update(parameters);
         }
+        const fogIsTransitioning = this.style && this.style.fog && this.style.fog.hasTransition();
+        if (fogIsTransitioning) {
+            this.style._markersNeedUpdate = true;
+            this._sourcesDirty = true;
+        }
         if (this.style && this._sourcesDirty) {
             this._sourcesDirty = false;
+            this.painter._updateFog(this.style);
             this._updateTerrain();
             this.style._updateSources(this.transform);
         }
@@ -43872,18 +45261,26 @@ class Map extends Camera {
                 this.fire(new ref_properties.Event('gpu-timing-layer', { layerTimes: renderedLayerTimes }));
             }, 50);
         }
-        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty;
+        const somethingDirty = this._sourcesDirty || this._styleDirty || this._placementDirty || averageElevationChanged;
         if (somethingDirty || this._repaint) {
             this.triggerRepaint();
         } else {
-            this._triggerFrame(false);
-            if (!this.isMoving() && this.loaded()) {
-                this.fire(new ref_properties.Event('idle'));
-                this._isInitialLoad = false;
-                if (this.speedIndexTiming) {
-                    const speedIndexNumber = this._calculateSpeedIndex();
-                    this.fire(new ref_properties.Event('speedindexcompleted', { speedIndex: speedIndexNumber }));
-                    this.speedIndexTiming = false;
+            const willIdle = !this.isMoving() && this.loaded();
+            if (willIdle) {
+                averageElevationChanged = this._updateAverageElevation(frameStartTime, true);
+            }
+            if (averageElevationChanged) {
+                this.triggerRepaint();
+            } else {
+                this._triggerFrame(false);
+                if (willIdle) {
+                    this.fire(new ref_properties.Event('idle'));
+                    this._isInitialLoad = false;
+                    if (this.speedIndexTiming) {
+                        const speedIndexNumber = this._calculateSpeedIndex();
+                        this.fire(new ref_properties.Event('speedindexcompleted', { speedIndex: speedIndexNumber }));
+                        this.speedIndexTiming = false;
+                    }
                 }
             }
         }
@@ -43892,6 +45289,39 @@ class Map extends Camera {
             this._authenticate();
         }
         return this;
+    }
+    _updateAverageElevation(timeStamp, ignoreTimeout = false) {
+        const applyUpdate = value => {
+            this.transform.averageElevation = value;
+            this._update(false);
+            return true;
+        };
+        if (!this.painter.averageElevationNeedsEasing()) {
+            if (this.transform.averageElevation !== 0)
+                return applyUpdate(0);
+            return false;
+        }
+        const timeoutElapsed = ignoreTimeout || timeStamp - this._averageElevationLastSampledAt > AVERAGE_ELEVATION_SAMPLING_INTERVAL;
+        if (timeoutElapsed && !this._averageElevation.isEasing(timeStamp)) {
+            const currentElevation = this.transform.averageElevation;
+            let newElevation = this.transform.sampleAverageElevation();
+            if (isNaN(newElevation)) {
+                newElevation = 0;
+            } else {
+                this._averageElevationLastSampledAt = timeStamp;
+            }
+            const elevationChange = Math.abs(currentElevation - newElevation);
+            if (elevationChange > AVERAGE_ELEVATION_EASE_THRESHOLD) {
+                this._averageElevation.easeTo(newElevation, timeStamp, AVERAGE_ELEVATION_EASE_TIME);
+            } else if (elevationChange > AVERAGE_ELEVATION_CHANGE_THRESHOLD) {
+                this._averageElevation.jumpTo(newElevation);
+                return applyUpdate(newElevation);
+            }
+        }
+        if (this._averageElevation.isEasing(timeStamp)) {
+            return applyUpdate(this._averageElevation.getValue(timeStamp));
+        }
+        return false;
     }
     _authenticate() {
         ref_properties.getMapSessionAPI(this._getMapId(), this._requestManager._skuToken, this._requestManager._customAccessToken, err => {
@@ -43959,6 +45389,7 @@ class Map extends Camera {
             this._frame = null;
         }
         this._renderTaskQueue.clear();
+        this._domRenderTaskQueue.clear();
         this.painter.destroy();
         this.handlers.destroy();
         delete this.handlers;
@@ -44134,7 +45565,11 @@ class NavigationControl {
     }
     _rotateCompassArrow() {
         const rotate = this.options.visualizePitch ? `scale(${ 1 / Math.pow(Math.cos(this._map.transform.pitch * (Math.PI / 180)), 0.5) }) rotateX(${ this._map.transform.pitch }deg) rotateZ(${ this._map.transform.angle * (180 / Math.PI) }deg)` : `rotate(${ this._map.transform.angle * (180 / Math.PI) }deg)`;
-        this._compassIcon.style.transform = rotate;
+        this._map._requestDomTask(() => {
+            if (this._compassIcon) {
+                this._compassIcon.style.transform = rotate;
+            }
+        });
     }
     onAdd(map) {
         this._map = map;
@@ -44287,489 +45722,6 @@ class MouseRotateWrapper {
         delete this._startPos;
         delete this._lastPos;
         this.offTemp();
-    }
-}
-
-function smartWrap (lngLat, priorPos, transform) {
-    lngLat = new ref_properties.LngLat(lngLat.lng, lngLat.lat);
-    if (priorPos) {
-        const left = new ref_properties.LngLat(lngLat.lng - 360, lngLat.lat);
-        const right = new ref_properties.LngLat(lngLat.lng + 360, lngLat.lat);
-        const withinWrap = Math.ceil(Math.abs(lngLat.lng - transform.center.lng) / 360) * 360;
-        const delta = transform.locationPoint(lngLat).distSqr(priorPos);
-        const offscreen = priorPos.x < 0 || priorPos.y < 0 || priorPos.x > transform.width || priorPos.y > transform.height;
-        if (transform.locationPoint(left).distSqr(priorPos) < delta && (offscreen || Math.abs(left.lng - transform.center.lng) < withinWrap)) {
-            lngLat = left;
-        } else if (transform.locationPoint(right).distSqr(priorPos) < delta && (offscreen || Math.abs(right.lng - transform.center.lng) < withinWrap)) {
-            lngLat = right;
-        }
-    }
-    while (Math.abs(lngLat.lng - transform.center.lng) > 180) {
-        const pos = transform.locationPoint(lngLat);
-        if (pos.x >= 0 && pos.y >= 0 && pos.x <= transform.width && pos.y <= transform.height) {
-            break;
-        }
-        if (lngLat.lng > transform.center.lng) {
-            lngLat.lng -= 360;
-        } else {
-            lngLat.lng += 360;
-        }
-    }
-    return lngLat;
-}
-
-const anchorTranslate = {
-    'center': 'translate(-50%,-50%)',
-    'top': 'translate(-50%,0)',
-    'top-left': 'translate(0,0)',
-    'top-right': 'translate(-100%,0)',
-    'bottom': 'translate(-50%,-100%)',
-    'bottom-left': 'translate(0,-100%)',
-    'bottom-right': 'translate(-100%,-100%)',
-    'left': 'translate(0,-50%)',
-    'right': 'translate(-100%,-50%)'
-};
-function applyAnchorClass(element, anchor, prefix) {
-    const classList = element.classList;
-    for (const key in anchorTranslate) {
-        classList.remove(`mapboxgl-${ prefix }-anchor-${ key }`);
-    }
-    classList.add(`mapboxgl-${ prefix }-anchor-${ anchor }`);
-}
-
-class Marker extends ref_properties.Evented {
-    constructor(options, legacyOptions) {
-        super();
-        if (options instanceof ref_properties.window.HTMLElement || legacyOptions) {
-            options = ref_properties.extend({ element: options }, legacyOptions);
-        }
-        ref_properties.bindAll([
-            '_update',
-            '_onMove',
-            '_onUp',
-            '_addDragHandler',
-            '_onMapClick',
-            '_onKeyPress',
-            '_clearOcclusionTimer'
-        ], this);
-        this._anchor = options && options.anchor || 'center';
-        this._color = options && options.color || '#3FB1CE';
-        this._scale = options && options.scale || 1;
-        this._draggable = options && options.draggable || false;
-        this._clickTolerance = options && options.clickTolerance || 0;
-        this._isDragging = false;
-        this._state = 'inactive';
-        this._rotation = options && options.rotation || 0;
-        this._rotationAlignment = options && options.rotationAlignment || 'auto';
-        this._pitchAlignment = options && options.pitchAlignment && options.pitchAlignment !== 'auto' ? options.pitchAlignment : this._rotationAlignment;
-        if (!options || !options.element) {
-            this._defaultMarker = true;
-            this._element = DOM.create('div');
-            this._element.setAttribute('aria-label', 'Map marker');
-            const svg = DOM.createNS('http://www.w3.org/2000/svg', 'svg');
-            const defaultHeight = 41;
-            const defaultWidth = 27;
-            svg.setAttributeNS(null, 'display', 'block');
-            svg.setAttributeNS(null, 'height', `${ defaultHeight }px`);
-            svg.setAttributeNS(null, 'width', `${ defaultWidth }px`);
-            svg.setAttributeNS(null, 'viewBox', `0 0 ${ defaultWidth } ${ defaultHeight }`);
-            const markerLarge = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            markerLarge.setAttributeNS(null, 'stroke', 'none');
-            markerLarge.setAttributeNS(null, 'stroke-width', '1');
-            markerLarge.setAttributeNS(null, 'fill', 'none');
-            markerLarge.setAttributeNS(null, 'fill-rule', 'evenodd');
-            const page1 = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            page1.setAttributeNS(null, 'fill-rule', 'nonzero');
-            const shadow = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            shadow.setAttributeNS(null, 'transform', 'translate(3.0, 29.0)');
-            shadow.setAttributeNS(null, 'fill', '#000000');
-            const ellipses = [
-                {
-                    'rx': '10.5',
-                    'ry': '5.25002273'
-                },
-                {
-                    'rx': '10.5',
-                    'ry': '5.25002273'
-                },
-                {
-                    'rx': '9.5',
-                    'ry': '4.77275007'
-                },
-                {
-                    'rx': '8.5',
-                    'ry': '4.29549936'
-                },
-                {
-                    'rx': '7.5',
-                    'ry': '3.81822308'
-                },
-                {
-                    'rx': '6.5',
-                    'ry': '3.34094679'
-                },
-                {
-                    'rx': '5.5',
-                    'ry': '2.86367051'
-                },
-                {
-                    'rx': '4.5',
-                    'ry': '2.38636864'
-                }
-            ];
-            for (const data of ellipses) {
-                const ellipse = DOM.createNS('http://www.w3.org/2000/svg', 'ellipse');
-                ellipse.setAttributeNS(null, 'opacity', '0.04');
-                ellipse.setAttributeNS(null, 'cx', '10.5');
-                ellipse.setAttributeNS(null, 'cy', '5.80029008');
-                ellipse.setAttributeNS(null, 'rx', data['rx']);
-                ellipse.setAttributeNS(null, 'ry', data['ry']);
-                shadow.appendChild(ellipse);
-            }
-            const background = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            background.setAttributeNS(null, 'fill', this._color);
-            const bgPath = DOM.createNS('http://www.w3.org/2000/svg', 'path');
-            bgPath.setAttributeNS(null, 'd', 'M27,13.5 C27,19.074644 20.250001,27.000002 14.75,34.500002 C14.016665,35.500004 12.983335,35.500004 12.25,34.500002 C6.7499993,27.000002 0,19.222562 0,13.5 C0,6.0441559 6.0441559,0 13.5,0 C20.955844,0 27,6.0441559 27,13.5 Z');
-            background.appendChild(bgPath);
-            const border = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            border.setAttributeNS(null, 'opacity', '0.25');
-            border.setAttributeNS(null, 'fill', '#000000');
-            const borderPath = DOM.createNS('http://www.w3.org/2000/svg', 'path');
-            borderPath.setAttributeNS(null, 'd', 'M13.5,0 C6.0441559,0 0,6.0441559 0,13.5 C0,19.222562 6.7499993,27 12.25,34.5 C13,35.522727 14.016664,35.500004 14.75,34.5 C20.250001,27 27,19.074644 27,13.5 C27,6.0441559 20.955844,0 13.5,0 Z M13.5,1 C20.415404,1 26,6.584596 26,13.5 C26,15.898657 24.495584,19.181431 22.220703,22.738281 C19.945823,26.295132 16.705119,30.142167 13.943359,33.908203 C13.743445,34.180814 13.612715,34.322738 13.5,34.441406 C13.387285,34.322738 13.256555,34.180814 13.056641,33.908203 C10.284481,30.127985 7.4148684,26.314159 5.015625,22.773438 C2.6163816,19.232715 1,15.953538 1,13.5 C1,6.584596 6.584596,1 13.5,1 Z');
-            border.appendChild(borderPath);
-            const maki = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            maki.setAttributeNS(null, 'transform', 'translate(6.0, 7.0)');
-            maki.setAttributeNS(null, 'fill', '#FFFFFF');
-            const circleContainer = DOM.createNS('http://www.w3.org/2000/svg', 'g');
-            circleContainer.setAttributeNS(null, 'transform', 'translate(8.0, 8.0)');
-            const circle1 = DOM.createNS('http://www.w3.org/2000/svg', 'circle');
-            circle1.setAttributeNS(null, 'fill', '#000000');
-            circle1.setAttributeNS(null, 'opacity', '0.25');
-            circle1.setAttributeNS(null, 'cx', '5.5');
-            circle1.setAttributeNS(null, 'cy', '5.5');
-            circle1.setAttributeNS(null, 'r', '5.4999962');
-            const circle2 = DOM.createNS('http://www.w3.org/2000/svg', 'circle');
-            circle2.setAttributeNS(null, 'fill', '#FFFFFF');
-            circle2.setAttributeNS(null, 'cx', '5.5');
-            circle2.setAttributeNS(null, 'cy', '5.5');
-            circle2.setAttributeNS(null, 'r', '5.4999962');
-            circleContainer.appendChild(circle1);
-            circleContainer.appendChild(circle2);
-            page1.appendChild(shadow);
-            page1.appendChild(background);
-            page1.appendChild(border);
-            page1.appendChild(maki);
-            page1.appendChild(circleContainer);
-            svg.appendChild(page1);
-            svg.setAttributeNS(null, 'height', `${ defaultHeight * this._scale }px`);
-            svg.setAttributeNS(null, 'width', `${ defaultWidth * this._scale }px`);
-            this._element.appendChild(svg);
-            this._offset = ref_properties.pointGeometry.convert(options && options.offset || [
-                0,
-                -14
-            ]);
-        } else {
-            this._element = options.element;
-            this._offset = ref_properties.pointGeometry.convert(options && options.offset || [
-                0,
-                0
-            ]);
-        }
-        this._element.classList.add('mapboxgl-marker');
-        this._element.addEventListener('dragstart', e => {
-            e.preventDefault();
-        });
-        this._element.addEventListener('mousedown', e => {
-            e.preventDefault();
-        });
-        applyAnchorClass(this._element, this._anchor, 'marker');
-        this._popup = null;
-    }
-    addTo(map) {
-        this.remove();
-        this._map = map;
-        map.getCanvasContainer().appendChild(this._element);
-        map.on('move', this._update);
-        map.on('moveend', this._update);
-        map.on('remove', this._clearOcclusionTimer);
-        this.setDraggable(this._draggable);
-        this._update();
-        this._map.on('click', this._onMapClick);
-        return this;
-    }
-    remove() {
-        if (this._map) {
-            this._map.off('click', this._onMapClick);
-            this._map.off('move', this._update);
-            this._map.off('moveend', this._update);
-            this._map.off('mousedown', this._addDragHandler);
-            this._map.off('touchstart', this._addDragHandler);
-            this._map.off('mouseup', this._onUp);
-            this._map.off('touchend', this._onUp);
-            this._map.off('mousemove', this._onMove);
-            this._map.off('touchmove', this._onMove);
-            this._map.off('remove', this._clearOcclusionTimer);
-            delete this._map;
-        }
-        this._clearOcclusionTimer();
-        DOM.remove(this._element);
-        if (this._popup)
-            this._popup.remove();
-        return this;
-    }
-    getLngLat() {
-        return this._lngLat;
-    }
-    setLngLat(lnglat) {
-        this._lngLat = ref_properties.LngLat.convert(lnglat);
-        this._pos = null;
-        if (this._popup)
-            this._popup.setLngLat(this._lngLat);
-        this._update();
-        return this;
-    }
-    getElement() {
-        return this._element;
-    }
-    setPopup(popup) {
-        if (this._popup) {
-            this._popup.remove();
-            this._popup = null;
-            this._element.removeEventListener('keypress', this._onKeyPress);
-            if (!this._originalTabIndex) {
-                this._element.removeAttribute('tabindex');
-            }
-        }
-        if (popup) {
-            if (!('offset' in popup.options)) {
-                const markerHeight = 41 - 5.8 / 2;
-                const markerRadius = 13.5;
-                const linearOffset = Math.sqrt(Math.pow(markerRadius, 2) / 2);
-                popup.options.offset = this._defaultMarker ? {
-                    'top': [
-                        0,
-                        0
-                    ],
-                    'top-left': [
-                        0,
-                        0
-                    ],
-                    'top-right': [
-                        0,
-                        0
-                    ],
-                    'bottom': [
-                        0,
-                        -markerHeight
-                    ],
-                    'bottom-left': [
-                        linearOffset,
-                        (markerHeight - markerRadius + linearOffset) * -1
-                    ],
-                    'bottom-right': [
-                        -linearOffset,
-                        (markerHeight - markerRadius + linearOffset) * -1
-                    ],
-                    'left': [
-                        markerRadius,
-                        (markerHeight - markerRadius) * -1
-                    ],
-                    'right': [
-                        -markerRadius,
-                        (markerHeight - markerRadius) * -1
-                    ]
-                } : this._offset;
-            }
-            this._popup = popup;
-            if (this._lngLat)
-                this._popup.setLngLat(this._lngLat);
-            this._originalTabIndex = this._element.getAttribute('tabindex');
-            if (!this._originalTabIndex) {
-                this._element.setAttribute('tabindex', '0');
-            }
-            this._element.addEventListener('keypress', this._onKeyPress);
-        }
-        return this;
-    }
-    _onKeyPress(e) {
-        const code = e.code;
-        const legacyCode = e.charCode || e.keyCode;
-        if (code === 'Space' || code === 'Enter' || legacyCode === 32 || legacyCode === 13) {
-            this.togglePopup();
-        }
-    }
-    _onMapClick(e) {
-        const targetElement = e.originalEvent.target;
-        const element = this._element;
-        if (this._popup && (targetElement === element || element.contains(targetElement))) {
-            this.togglePopup();
-        }
-    }
-    getPopup() {
-        return this._popup;
-    }
-    togglePopup() {
-        const popup = this._popup;
-        if (!popup)
-            return this;
-        else if (popup.isOpen())
-            popup.remove();
-        else
-            popup.addTo(this._map);
-        return this;
-    }
-    _updateOcclusion() {
-        if (!this._occlusionTimer) {
-            this._occlusionTimer = setTimeout(this._onOcclusionTimer.bind(this), 60);
-        }
-    }
-    _clearOcclusionTimer() {
-        if (this._occlusionTimer) {
-            clearTimeout(this._occlusionTimer);
-            this._occlusionTimer = null;
-        }
-    }
-    _onOcclusionTimer() {
-        const tr = this._map.transform;
-        const pos = this._pos ? this._pos.sub(this._transformedOffset()) : null;
-        if (pos && pos.x >= 0 && pos.x < tr.width && pos.y >= 0 && pos.y < tr.height) {
-            const raycastLoc = this._map.unproject(pos);
-            const camera = this._map.getFreeCameraOptions();
-            if (camera.position) {
-                const cameraPos = camera.position.toLngLat();
-                const raycastDistance = cameraPos.distanceTo(raycastLoc);
-                const posDistance = cameraPos.distanceTo(this._lngLat);
-                const occluded = raycastDistance < posDistance * 0.9;
-                this._element.classList.toggle('mapboxgl-marker-occluded', occluded);
-            }
-        }
-        this._occlusionTimer = null;
-    }
-    _update(e) {
-        if (!this._map)
-            return;
-        if (this._map.transform.renderWorldCopies) {
-            this._lngLat = smartWrap(this._lngLat, this._pos, this._map.transform);
-        }
-        this._pos = this._map.project(this._lngLat)._add(this._transformedOffset());
-        if (this._map.transform.elevation)
-            this._updateOcclusion();
-        let rotation = '';
-        if (this._rotationAlignment === 'viewport' || this._rotationAlignment === 'auto') {
-            rotation = `rotateZ(${ this._rotation }deg)`;
-        } else if (this._rotationAlignment === 'map') {
-            rotation = `rotateZ(${ this._rotation - this._map.getBearing() }deg)`;
-        }
-        let pitch = '';
-        if (this._pitchAlignment === 'viewport' || this._pitchAlignment === 'auto') {
-            pitch = 'rotateX(0deg)';
-        } else if (this._pitchAlignment === 'map') {
-            pitch = `rotateX(${ this._map.getPitch() }deg)`;
-        }
-        if (!e || e.type === 'moveend') {
-            this._pos = this._pos.round();
-        }
-        DOM.setTransform(this._element, `${ anchorTranslate[this._anchor] } translate(${ this._pos.x }px, ${ this._pos.y }px) ${ pitch } ${ rotation }`);
-    }
-    _transformedOffset() {
-        if (!this._defaultMarker)
-            return this._offset;
-        const tr = this._map.transform;
-        const offset = this._offset.mult(this._scale);
-        if (this._rotationAlignment === 'map')
-            offset._rotate(tr.angle);
-        if (this._pitchAlignment === 'map')
-            offset.y *= Math.cos(tr._pitch);
-        return offset;
-    }
-    getOffset() {
-        return this._offset;
-    }
-    setOffset(offset) {
-        this._offset = ref_properties.pointGeometry.convert(offset);
-        this._update();
-        return this;
-    }
-    _onMove(e) {
-        if (!this._isDragging) {
-            const clickTolerance = this._clickTolerance || this._map._clickTolerance;
-            this._isDragging = e.point.dist(this._pointerdownPos) >= clickTolerance;
-        }
-        if (!this._isDragging)
-            return;
-        this._pos = e.point.sub(this._positionDelta);
-        this._lngLat = this._map.unproject(this._pos);
-        this.setLngLat(this._lngLat);
-        this._element.style.pointerEvents = 'none';
-        if (this._state === 'pending') {
-            this._state = 'active';
-            this.fire(new ref_properties.Event('dragstart'));
-        }
-        this.fire(new ref_properties.Event('drag'));
-    }
-    _onUp() {
-        this._element.style.pointerEvents = 'auto';
-        this._positionDelta = null;
-        this._pointerdownPos = null;
-        this._isDragging = false;
-        this._map.off('mousemove', this._onMove);
-        this._map.off('touchmove', this._onMove);
-        if (this._state === 'active') {
-            this.fire(new ref_properties.Event('dragend'));
-        }
-        this._state = 'inactive';
-    }
-    _addDragHandler(e) {
-        if (this._element.contains(e.originalEvent.target)) {
-            e.preventDefault();
-            this._positionDelta = e.point.sub(this._pos).add(this._transformedOffset());
-            this._pointerdownPos = e.point;
-            this._state = 'pending';
-            this._map.on('mousemove', this._onMove);
-            this._map.on('touchmove', this._onMove);
-            this._map.once('mouseup', this._onUp);
-            this._map.once('touchend', this._onUp);
-        }
-    }
-    setDraggable(shouldBeDraggable) {
-        this._draggable = !!shouldBeDraggable;
-        if (this._map) {
-            if (shouldBeDraggable) {
-                this._map.on('mousedown', this._addDragHandler);
-                this._map.on('touchstart', this._addDragHandler);
-            } else {
-                this._map.off('mousedown', this._addDragHandler);
-                this._map.off('touchstart', this._addDragHandler);
-            }
-        }
-        return this;
-    }
-    isDraggable() {
-        return this._draggable;
-    }
-    setRotation(rotation) {
-        this._rotation = rotation || 0;
-        this._update();
-        return this;
-    }
-    getRotation() {
-        return this._rotation;
-    }
-    setRotationAlignment(alignment) {
-        this._rotationAlignment = alignment || 'auto';
-        this._update();
-        return this;
-    }
-    getRotationAlignment() {
-        return this._rotationAlignment;
-    }
-    setPitchAlignment(alignment) {
-        this._pitchAlignment = alignment && alignment !== 'auto' ? alignment : this._rotationAlignment;
-        this._update();
-        return this;
-    }
-    getPitchAlignment() {
-        return this._pitchAlignment;
     }
 }
 
@@ -45170,24 +46122,26 @@ function updateScale(map, container, options) {
         const maxFeet = 3.2808 * maxMeters;
         if (maxFeet > 5280) {
             const maxMiles = maxFeet / 5280;
-            setScale(container, maxWidth, maxMiles, map._getUIString('ScaleControl.Miles'));
+            setScale(container, maxWidth, maxMiles, map._getUIString('ScaleControl.Miles'), map);
         } else {
-            setScale(container, maxWidth, maxFeet, map._getUIString('ScaleControl.Feet'));
+            setScale(container, maxWidth, maxFeet, map._getUIString('ScaleControl.Feet'), map);
         }
     } else if (options && options.unit === 'nautical') {
         const maxNauticals = maxMeters / 1852;
-        setScale(container, maxWidth, maxNauticals, map._getUIString('ScaleControl.NauticalMiles'));
+        setScale(container, maxWidth, maxNauticals, map._getUIString('ScaleControl.NauticalMiles'), map);
     } else if (maxMeters >= 1000) {
-        setScale(container, maxWidth, maxMeters / 1000, map._getUIString('ScaleControl.Kilometers'));
+        setScale(container, maxWidth, maxMeters / 1000, map._getUIString('ScaleControl.Kilometers'), map);
     } else {
-        setScale(container, maxWidth, maxMeters, map._getUIString('ScaleControl.Meters'));
+        setScale(container, maxWidth, maxMeters, map._getUIString('ScaleControl.Meters'), map);
     }
 }
-function setScale(container, maxWidth, maxDistance, unit) {
+function setScale(container, maxWidth, maxDistance, unit, map) {
     const distance = getRoundNum(maxDistance);
     const ratio = distance / maxDistance;
-    container.style.width = `${ maxWidth * ratio }px`;
-    container.innerHTML = `${ distance }&nbsp;${ unit }`;
+    map._requestDomTask(() => {
+        container.style.width = `${ maxWidth * ratio }px`;
+        container.innerHTML = `${ distance }&nbsp;${ unit }`;
+    });
 }
 function getDecimalRoundNum(d) {
     const multiplier = Math.pow(10, Math.ceil(-Math.log(d) / Math.LN10));
@@ -45527,8 +46481,12 @@ class Popup extends ref_properties.Evented {
             }
         }
         const offsetedPos = pos.add(offset[anchor]).round();
-        DOM.setTransform(this._container, `${ anchorTranslate[anchor] } translate(${ offsetedPos.x }px,${ offsetedPos.y }px)`);
-        applyAnchorClass(this._container, anchor, 'popup');
+        this._map._requestDomTask(() => {
+            if (this._container && anchor) {
+                DOM.setTransform(this._container, `${ anchorTranslate[anchor] } translate(${ offsetedPos.x }px,${ offsetedPos.y }px)`);
+                applyAnchorClass(this._container, anchor, 'popup');
+            }
+        });
     }
     _focusFirstElement() {
         if (!this.options.focusAfterOpen || !this._container)
@@ -45539,6 +46497,12 @@ class Popup extends ref_properties.Evented {
     }
     _onClose() {
         this.remove();
+    }
+    _setOpacity(opacity) {
+        if (this._content)
+            this._content.style.opacity = opacity;
+        if (this._tip)
+            this._tip.style.opacity = opacity;
     }
 }
 function normalizeOffset(offset) {
