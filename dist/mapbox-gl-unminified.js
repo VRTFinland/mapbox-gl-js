@@ -38581,7 +38581,7 @@ const draw = {
     custom: drawCustom
 };
 class Painter {
-    constructor(gl, transform, devicePixelRatio) {
+    constructor(gl, transform, devicePixelRatio = ref_properties.exported.devicePixelRatio) {
         this.context = new Context(gl);
         this.transform = transform;
         this._devicePixelRatio = devicePixelRatio;
