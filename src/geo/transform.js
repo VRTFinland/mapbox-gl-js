@@ -1038,9 +1038,9 @@ class Transform {
      */
     pointCoordinate(p: Point): MercatorCoordinate {
         const horizonOffset = this.horizonLineFromTop(false);
-        const xCoef = this.map.devicePixelRatio * this.width / this.map.painter.width;
-        const yCoef = this.map.devicePixelRatio * this.height / this.map.painter.height;
-        const clamped = new Point(xCoef * p.x, Math.max(horizonOffset, yCoef * p.y));
+        const xCoefficient = this.map.devicePixelRatio * this.width / this.map.painter.width;
+        const yCoefficient = this.map.devicePixelRatio * this.height / this.map.painter.height;
+        const clamped = new Point(xCoefficient * p.x, Math.max(horizonOffset, yCoefficient * p.y));
 
         return this.rayIntersectionCoordinate(this.pointRayIntersection(clamped));
     }
