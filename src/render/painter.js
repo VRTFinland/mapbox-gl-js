@@ -149,7 +149,7 @@ class Painter {
     frameCopies: Array<WebGLTexture>;
     loadTimeStamps: Array<number>;
 
-    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number) {
+    constructor(gl: WebGLRenderingContext, transform: Transform, devicePixelRatio: number = browser.devicePixelRatio) {
         this.context = new Context(gl);
         this.transform = transform;
         this._devicePixelRatio = devicePixelRatio;
