@@ -30,7 +30,7 @@ type ElevationReference = "sea" | "ground";
  * @private
  */
 class Transform {
-    map: Map;
+    map: ?Map;
     tileSize: number;
     tileZoom: number;
     lngRange: ?[number, number];
@@ -1038,8 +1038,11 @@ class Transform {
      */
     pointCoordinate(p: Point): MercatorCoordinate {
         const horizonOffset = this.horizonLineFromTop(false);
-        const xCoefficient = this.map.devicePixelRatio * this.width / this.map.painter.width;
-        const yCoefficient = this.map.devicePixelRatio * this.height / this.map.painter.height;
+        let xCoefficient = 1, yCoefficient = 1;
+        if (this.map) {
+            xCoefficient = this.map.devicePixelRatio * this.width / this.map.painter.width;
+            yCoefficient = this.map.devicePixelRatio * this.height / this.map.painter.height;
+        }
         const clamped = new Point(xCoefficient * p.x, Math.max(horizonOffset, yCoefficient * p.y));
 
         return this.rayIntersectionCoordinate(this.pointRayIntersection(clamped));
