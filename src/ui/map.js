@@ -296,7 +296,7 @@ class Map extends Camera {
     _canvasContainer: HTMLElement;
     _controlContainer: HTMLElement;
     _controlPositions: {[_: string]: HTMLElement};
-    _devicePixelRatio: ?number;
+    _devicePixelRatio: number;
     _interactive: ?boolean;
     _showTileBoundaries: ?boolean;
     _showTerrainWireframe: ?boolean;
