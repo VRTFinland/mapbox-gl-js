@@ -13,7 +13,6 @@ import type {OverscaledTileID} from '../../source/tile_id.js';
 import type Tile from '../../source/tile.js';
 import type CircleStyleLayer from '../../style/style_layer/circle_style_layer.js';
 import type Painter from '../painter.js';
-import browser from '../../util/browser.js';
 
 export type CircleUniformsType = {|
     'u_camera_to_center_distance': Uniform1f,

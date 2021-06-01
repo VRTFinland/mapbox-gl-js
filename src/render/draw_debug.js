@@ -6,7 +6,6 @@ import CullFaceMode from '../gl/cull_face_mode.js';
 import {debugUniformValues} from './program/debug_program.js';
 import Color from '../style-spec/util/color.js';
 import ColorMode from '../gl/color_mode.js';
-import browser from '../util/browser.js';
 
 import type Painter from './painter.js';
 import type SourceCache from '../source/source_cache.js';

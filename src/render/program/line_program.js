@@ -9,7 +9,6 @@ import {
 } from '../uniform_binding.js';
 import pixelsToTileUnits from '../../source/pixels_to_tile_units.js';
 import {extend} from '../../util/util.js';
-import browser from '../../util/browser.js';
 
 import type Context from '../../gl/context.js';
 import type {UniformValues, UniformLocations} from '../uniform_binding.js';

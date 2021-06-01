@@ -7,7 +7,6 @@ import {
     UniformMatrix4f
 } from '../uniform_binding.js';
 import {extend} from '../../util/util.js';
-import browser from '../../util/browser.js';
 
 import type Context from '../../gl/context.js';
 import type Painter from '../painter.js';

@@ -8,7 +8,6 @@ import loadTileJSON from './load_tilejson.js';
 import {postTurnstileEvent} from '../util/mapbox.js';
 import TileBounds from './tile_bounds.js';
 import Texture from '../render/texture.js';
-import browser from '../util/browser.js';
 
 import {cacheEntryPossiblyAdded} from '../util/tile_request_cache.js';
 
