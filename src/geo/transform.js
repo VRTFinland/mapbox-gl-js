@@ -7,6 +7,7 @@ import {getProjection} from './projection/index.js';
 import tileTransform from '../geo/projection/tile_transform.js';
 import Point from '@mapbox/point-geometry';
 import {wrap, clamp, pick, radToDeg, degToRad, getAABBPointSquareDist, furthestTileCorner, warnOnce, deepEqual} from '../util/util.js';
+import type Map from '../ui/map.js';
 import {number as interpolate} from '../style-spec/util/interpolate.js';
 import EXTENT from '../data/extent.js';
 import {vec4, mat4, mat2, vec3, quat} from 'gl-matrix';
@@ -37,6 +38,7 @@ type ElevationReference = "sea" | "ground";
  * @private
  */
 class Transform {
+    map: ?Map;
     tileSize: number;
     tileZoom: number;
     maxBounds: ?LngLatBounds;
@@ -1198,7 +1200,13 @@ class Transform {
      */
     pointCoordinate(p: Point, z?: number = this._centerAltitude): MercatorCoordinate {
         const horizonOffset = this.horizonLineFromTop(false);
-        const clamped = new Point(p.x, Math.max(horizonOffset, p.y));
+        let xCoefficient = 1, yCoefficient = 1;
+        if (this.map) {
+            xCoefficient = this.map.devicePixelRatio * this.width / this.map.painter.width;
+            yCoefficient = this.map.devicePixelRatio * this.height / this.map.painter.height;
+        }
+        const clamped = new Point(xCoefficient * p.x, Math.max(horizonOffset, yCoefficient * p.y));
+
         return this.rayIntersectionCoordinate(this.pointRayIntersection(clamped, z));
     }
 

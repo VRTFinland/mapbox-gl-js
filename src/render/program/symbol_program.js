@@ -8,7 +8,6 @@ import {
     UniformMatrix4f
 } from '../uniform_binding.js';
 import {extend} from '../../util/util.js';
-import browser from '../../util/browser.js';
 
 import type Context from '../../gl/context.js';
 import type Painter from '../painter.js';
@@ -228,7 +227,7 @@ const symbolSDFUniformValues = (
         glCoordMatrix, isText, texSize, tileID, zoomTransition,
         invRotMatrix, mercCenter), {
         'u_gamma_scale': pitchWithMap ? cameraToCenterDistance * Math.cos(painter.terrain ? 0 : _pitch) : 1,
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_is_halo': +isHalo
     });
 };

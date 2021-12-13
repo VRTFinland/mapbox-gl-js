@@ -12,7 +12,6 @@ import type {OverscaledTileID} from '../../source/tile_id.js';
 import type Tile from '../../source/tile.js';
 import type CircleStyleLayer from '../../style/style_layer/circle_style_layer.js';
 import type Painter from '../painter.js';
-import browser from '../../util/browser.js';
 
 export type CircleUniformsType = {|
     'u_camera_to_center_distance': Uniform1f,
@@ -56,7 +55,7 @@ const circleUniformValues = (
             tile,
             layer.paint.get('circle-translate'),
             layer.paint.get('circle-translate-anchor')),
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_extrude_scale': extrudeScale
     };
 };

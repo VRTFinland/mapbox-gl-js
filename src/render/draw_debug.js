@@ -6,7 +6,6 @@ import CullFaceMode from '../gl/cull_face_mode.js';
 import {debugUniformValues} from './program/debug_program.js';
 import Color from '../style-spec/util/color.js';
 import ColorMode from '../gl/color_mode.js';
-import browser from '../util/browser.js';
 
 import type Painter from './painter.js';
 import type SourceCache from '../source/source_cache.js';
@@ -64,7 +63,7 @@ function drawDebugSSRect(painter: Painter, x: number, y: number, width: number, 
     const gl = context.gl;
 
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(x * browser.devicePixelRatio, y * browser.devicePixelRatio, width * browser.devicePixelRatio, height * browser.devicePixelRatio);
+    gl.scissor(x * painter.devicePixelRatio, y * painter.devicePixelRatio, width * painter.devicePixelRatio, height * painter.devicePixelRatio);
     context.clear({color});
     gl.disable(gl.SCISSOR_TEST);
 }

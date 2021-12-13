@@ -7,7 +7,6 @@ import loadTileJSON from './load_tilejson.js';
 import {postTurnstileEvent} from '../util/mapbox.js';
 import TileBounds from './tile_bounds.js';
 import {ResourceType} from '../util/ajax.js';
-import browser from '../util/browser.js';
 import {cacheEntryPossiblyAdded} from '../util/tile_request_cache.js';
 import {DedupedRequest, loadVectorTile} from './vector_tile_worker_source.js';
 
@@ -226,7 +225,7 @@ class VectorTileSource extends Evented implements Source {
             tileSize: this.tileSize * tile.tileID.overscaleFactor(),
             type: this.type,
             source: this.id,
-            pixelRatio: browser.devicePixelRatio,
+            pixelRatio: this.map.devicePixelRatio,
             showCollisionBoxes: this.map.showCollisionBoxes,
             promoteId: this.promoteId,
             isSymbolTile: tile.isSymbolTile

@@ -83,7 +83,7 @@ const lineUniformValues = (
     const values = {
         'u_matrix': calculateMatrix(painter, tile, layer, matrix),
         'u_pixels_to_tile_units': pixelsToTileUnits,
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_units_to_pixels': [
             1 / transform.pixelsToGLUnits[0],
             1 / transform.pixelsToGLUnits[1]
@@ -118,7 +118,7 @@ const linePatternUniformValues = (
         'u_texsize': tile.imageAtlasTexture.size,
         // camera zoom ratio
         'u_pixels_to_tile_units': transform.calculatePixelsToTileUnitsMatrix(tile),
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_image': 0,
         'u_scale': [tileZoomRatio, crossfade.fromScale, crossfade.toScale],
         'u_fade': crossfade.t,
