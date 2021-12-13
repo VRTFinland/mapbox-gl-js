@@ -99,6 +99,21 @@
   			delay: 0
   		}
   	},
+  	projection: {
+  		type: "projection",
+  		doc: "The projection the map should be rendered in. Suported projections are Albers, Equal Earth, Equirectangular (WGS84), Lambert conformal conic, Mercator, Natural Earth, and Winkel Tripel. Terrain, fog, sky and CustomLayerInterface are not supported for projections other than mercator.",
+  		example: {
+  			name: "albers",
+  			center: [
+  				-154,
+  				50
+  			],
+  			parallels: [
+  				55,
+  				65
+  			]
+  		}
+  	},
   	layers: {
   		required: true,
   		type: "array",
@@ -621,7 +636,9 @@
   				doc: "A spherical dome around the map that is always rendered behind all other layers.",
   				"sdk-support": {
   					"basic functionality": {
-  						js: "2.0.0"
+  						js: "2.0.0",
+  						ios: "10.0.0",
+  						android: "10.0.0"
   					}
   				}
   			}
@@ -655,7 +672,7 @@
   	},
   	filter: {
   		type: "filter",
-  		doc: "A expression specifying conditions on source features. Only features that match the filter are displayed. Zoom expressions in filters are only evaluated at integer zoom levels. The `feature-state` expression is not supported in filter expressions."
+  		doc: "An expression specifying conditions on source features. Only features that match the filter are displayed. Zoom expressions in filters are only evaluated at integer zoom levels. The `[\"feature-state\", ...]` expression is not supported in filter expressions.  The `[\"pitch\"]` and `[\"distance-from-center\"]` expressions are supported only for filter expressions on the symbol layer."
   	},
   	layout: {
   		type: "layout",
@@ -717,7 +734,9 @@
   		doc: "Whether this layer is displayed.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		"property-type": "constant"
@@ -1715,7 +1734,7 @@
   		type: "formatted",
   		"default": "",
   		tokens: true,
-  		doc: "Value to use for a text label. If a plain `string` is provided, it will be treated as a `formatted` with default/inherited formatting options.",
+  		doc: "Value to use for a text label. If a plain `string` is provided, it will be treated as a `formatted` with default/inherited formatting options. SDF images are not supported in formatted text and will be ignored.",
   		"sdk-support": {
   			"basic functionality": {
   				js: "0.10.0",
@@ -1812,7 +1831,12 @@
   		units: "ems",
   		doc: "The maximum line width for text wrapping.",
   		requires: [
-  			"text-field"
+  			"text-field",
+  			{
+  				"symbol-placement": [
+  					"point"
+  				]
+  			}
   		],
   		"sdk-support": {
   			"basic functionality": {
@@ -2131,20 +2155,15 @@
   		value: "enum",
   		values: {
   			horizontal: {
-  				doc: "If a text's language supports horizontal writing mode, symbols with point placement would be laid out horizontally."
+  				doc: "If a text's language supports horizontal writing mode, symbols would be laid out horizontally."
   			},
   			vertical: {
-  				doc: "If a text's language supports vertical writing mode, symbols with point placement would be laid out vertically."
+  				doc: "If a text's language supports vertical writing mode, symbols would be laid out vertically."
   			}
   		},
-  		doc: "The property allows control over a symbol's orientation. Note that the property values act as a hint, so that a symbol whose language doesn’t support the provided orientation will be laid out in its natural orientation. Example: English point symbol will be rendered horizontally even if array value contains single 'vertical' enum value. The order of elements in an array define priority order for the placement of an orientation variant.",
+  		doc: "The property allows control over a symbol's orientation. Note that the property values act as a hint, so that a symbol whose language doesn’t support the provided orientation will be laid out in its natural orientation. Example: English point symbol will be rendered horizontally even if array value contains single 'vertical' enum value. For symbol with point placement, the order of elements in an array define priority order for the placement of an orientation variant. For symbol with line placement, the default text writing mode is either ['horizontal', 'vertical'] or ['vertical', 'horizontal'], the order doesn't affect the placement.",
   		requires: [
-  			"text-field",
-  			{
-  				"symbol-placement": [
-  					"point"
-  				]
-  			}
+  			"text-field"
   		],
   		"sdk-support": {
   			"basic functionality": {
@@ -2477,6 +2496,78 @@
   	value: "*",
   	doc: "A filter selects specific features from a layer."
   };
+  var filter_symbol = {
+  	type: "boolean",
+  	doc: "Expression which determines whether or not to display a symbol. Symbols support dynamic filtering, meaning this expression can use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature",
+  			"pitch",
+  			"distance-from-center"
+  		]
+  	}
+  };
+  var filter_fill = {
+  	type: "boolean",
+  	doc: "Expression which determines whether or not to display a polygon. Fill layer does NOT support dynamic filtering, meaning this expression can NOT use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature"
+  		]
+  	}
+  };
+  var filter_line = {
+  	type: "boolean",
+  	doc: "Expression which determines whether or not to display a Polygon or LineString. Line layer does NOT support dynamic filtering, meaning this expression can NOT use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature"
+  		]
+  	}
+  };
+  var filter_circle = {
+  	type: "boolean",
+  	doc: "Expression which determines whether or not to display a circle. Circle layer does NOT support dynamic filtering, meaning this expression can NOT use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature"
+  		]
+  	}
+  };
+  var filter_heatmap = {
+  	type: "boolean",
+  	doc: "Expression used to determine whether a point is being displayed or not. Heatmap layer does NOT support dynamic filtering, meaning this expression can NOT use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature"
+  		]
+  	}
+  };
   var filter_operator = {
   	type: "enum",
   	values: {
@@ -2622,7 +2713,7 @@
   			}
   		},
   		"in": {
-  			doc: "Determines whether an item exists in an array or a substring exists in a string.",
+  			doc: "Determines whether an item exists in an array or a substring exists in a string. In the specific case when the second and third arguments are string literals, you must wrap at least one of them in a [`literal`](#types-literal) expression to hint correct interpretation to the [type system](#type-system).",
   			group: "Lookup",
   			"sdk-support": {
   				"basic functionality": {
@@ -2676,7 +2767,7 @@
   			}
   		},
   		coalesce: {
-  			doc: "Evaluates each expression in turn until the first non-null value is obtained, and returns that value.",
+  			doc: "Evaluates each expression in turn until the first valid value is obtained. Invalid values are `null` and [`'image'`](#types-image) expressions that are unavailable in the style. If all values are invalid, `coalesce` returns the first value listed.",
   			group: "Decision",
   			"sdk-support": {
   				"basic functionality": {
@@ -2874,7 +2965,7 @@
   			}
   		},
   		image: {
-  			doc: "Returns an `image` type for use in `icon-image`, `*-pattern` entries and as a section in the `format` expression. If set, the `image` argument will check that the requested image exists in the style and will return either the resolved image name or `null`, depending on whether or not the image is currently in the style. This validation process is synchronous and requires the image to have been added to the style before requesting it in the `image` argument.",
+  			doc: "Returns a [`ResolvedImage`](/mapbox-gl-js/style-spec/types/#resolvedimage) for use in [`icon-image`](/mapbox-gl-js/style-spec/layers/#layout-symbol-icon-image), `*-pattern` entries, and as a section in the [`'format'`](#types-format) expression. A [`'coalesce'`](#coalesce) expression containing `image` expressions will evaluate to the first listed image that is currently in the style. This validation process is synchronous and requires the image to have been added to the style before requesting it in the `'image'` argument.",
   			group: "Types",
   			"sdk-support": {
   				"basic functionality": {
@@ -2890,12 +2981,15 @@
   			group: "Types",
   			"sdk-support": {
   				"basic functionality": {
-  					js: "0.54.0"
+  					js: "0.54.0",
+  					android: "8.4.0",
+  					ios: "5.4.0",
+  					macos: "0.15.0"
   				}
   			}
   		},
   		"to-string": {
-  			doc: "Converts the input value to a string. If the input is `null`, the result is `\"\"`. If the input is a boolean, the result is `\"true\"` or `\"false\"`. If the input is a number, it is converted to a string as specified by the [\"NumberToString\" algorithm](https://tc39.github.io/ecma262/#sec-tostring-applied-to-the-number-type) of the ECMAScript Language Specification. If the input is a color, it is converted to a string of the form `\"rgba(r,g,b,a)\"`, where `r`, `g`, and `b` are numerals ranging from 0 to 255, and `a` ranges from 0 to 1. Otherwise, the input is converted to a string in the format specified by the [`JSON.stringify`](https://tc39.github.io/ecma262/#sec-json.stringify) function of the ECMAScript Language Specification.",
+  			doc: "Converts the input value to a string. If the input is `null`, the result is `\"\"`. If the input is a [`boolean`](#types-boolean), the result is `\"true\"` or `\"false\"`. If the input is a number, it is converted to a string as specified by the [\"NumberToString\" algorithm](https://tc39.github.io/ecma262/#sec-tostring-applied-to-the-number-type) of the ECMAScript Language Specification. If the input is a [`color`](#color), it is converted to a string of the form `\"rgba(r,g,b,a)\"`, where `r`, `g`, and `b` are numerals ranging from 0 to 255, and `a` ranges from 0 to 1. If the input is an [`'image'`](#types-image) expression, `'to-string'` returns the image name. Otherwise, the input is converted to a string in the format specified by the [`JSON.stringify`](https://tc39.github.io/ecma262/#sec-json.stringify) function of the ECMAScript Language Specification.",
   			group: "Types",
   			"sdk-support": {
   				"basic functionality": {
@@ -2979,7 +3073,7 @@
   			}
   		},
   		get: {
-  			doc: "Retrieves a property value from the current feature's properties, or from another object if a second argument is provided. Returns null if the requested property is missing.",
+  			doc: "Retrieves a property value from the current feature's properties, or from another object if a second argument is provided. Returns `null` if the requested property is missing.",
   			group: "Lookup",
   			"sdk-support": {
   				"basic functionality": {
@@ -3003,7 +3097,7 @@
   			}
   		},
   		length: {
-  			doc: "Gets the length of an array or string.",
+  			doc: "Returns the length of an array or string.",
   			group: "Lookup",
   			"sdk-support": {
   				"basic functionality": {
@@ -3015,7 +3109,7 @@
   			}
   		},
   		properties: {
-  			doc: "Gets the feature properties object.  Note that in some cases, it may be more efficient to use [\"get\", \"property_name\"] directly.",
+  			doc: "Returns the feature properties object.  Note that in some cases, it may be more efficient to use `[\"get\", \"property_name\"]` directly.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
@@ -3027,7 +3121,7 @@
   			}
   		},
   		"feature-state": {
-  			doc: "Retrieves a property value from the current feature's state. Returns null if the requested property is not present on the feature's state. A feature's state is not part of the GeoJSON or vector tile data, and must be set programmatically on each feature. Features are identified by their `id` attribute, which must be an integer or a string that can be cast to an integer. Note that [\"feature-state\"] can only be used with paint properties that support data-driven styling.",
+  			doc: "Retrieves a property value from the current feature's state. Returns `null` if the requested property is not present on the feature's state. A feature's state is not part of the GeoJSON or vector tile data, and must be set programmatically on each feature. Features are identified by their `id` attribute, which must be an integer or a string that can be cast to an integer. Note that [\"feature-state\"] can only be used with paint properties that support data-driven styling.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
@@ -3036,7 +3130,7 @@
   			}
   		},
   		"geometry-type": {
-  			doc: "Gets the feature's geometry type: `Point`, `MultiPoint`, `LineString`, `MultiLineString`, `Polygon`, `MultiPolygon`.",
+  			doc: "Returns the feature's geometry type: `Point`, `MultiPoint`, `LineString`, `MultiLineString`, `Polygon`, `MultiPolygon`. `Multi*` feature types are only returned in GeoJSON sources. When working with vector tile sources, use the singular forms.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
@@ -3048,7 +3142,7 @@
   			}
   		},
   		id: {
-  			doc: "Gets the feature's id, if it has one.",
+  			doc: "Returns the feature's id, if it has one.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
@@ -3060,8 +3154,8 @@
   			}
   		},
   		zoom: {
-  			doc: "Gets the current zoom level.  Note that in style layout and paint properties, [\"zoom\"] may only appear as the input to a top-level \"step\" or \"interpolate\" expression.",
-  			group: "Zoom",
+  			doc: "Returns the current zoom level.  Note that in style layout and paint properties, [\"zoom\"] may only appear as the input to a top-level \"step\" or \"interpolate\" expression.",
+  			group: "Camera",
   			"sdk-support": {
   				"basic functionality": {
   					js: "0.41.0",
@@ -3071,8 +3165,26 @@
   				}
   			}
   		},
+  		pitch: {
+  			doc: "Returns the current pitch in degrees. `[\"pitch\"]` may only be used in the `filter` expression for a `symbol` layer.",
+  			group: "Camera",
+  			"sdk-support": {
+  				"basic functionality": {
+  					js: "2.6.0"
+  				}
+  			}
+  		},
+  		"distance-from-center": {
+  			doc: "Returns the distance of a `symbol` instance from the center of the map. The distance is measured in pixels divided by the height of the map container. It measures 0 at the center, decreases towards the camera and increase away from the camera. For example, if the height of the map is 1000px, a value of -1 means 1000px away from the center towards the camera, and a value of 1 means a distance of 1000px away from the camera from the center. `[\"distance-from-center\"]` may only be used in the `filter` expression for a `symbol` layer.",
+  			group: "Camera",
+  			"sdk-support": {
+  				"basic functionality": {
+  					js: "2.6.0"
+  				}
+  			}
+  		},
   		"heatmap-density": {
-  			doc: "Gets the kernel density estimation of a pixel in a heatmap layer, which is a relative measure of how many data points are crowded around a particular pixel. Can only be used in the `heatmap-color` property.",
+  			doc: "Returns the kernel density estimation of a pixel in a heatmap layer, which is a relative measure of how many data points are crowded around a particular pixel. Can only be used in the `heatmap-color` property.",
   			group: "Heatmap",
   			"sdk-support": {
   				"basic functionality": {
@@ -3084,7 +3196,7 @@
   			}
   		},
   		"line-progress": {
-  			doc: "Gets the progress along a gradient line. Can only be used in the `line-gradient` property.",
+  			doc: "Returns the progress along a gradient line. Can only be used in the `line-gradient` property.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
@@ -3096,20 +3208,25 @@
   			}
   		},
   		"sky-radial-progress": {
-  			doc: "Gets the distance of a point on the sky from the sun position. Returns 0 at sun position and 1 when the distance reaches `sky-gradient-radius`. Can only be used in the `sky-gradient` property.",
+  			doc: "Returns the distance of a point on the sky from the sun position. Returns 0 at sun position and 1 when the distance reaches `sky-gradient-radius`. Can only be used in the `sky-gradient` property.",
   			group: "sky",
   			"sdk-support": {
   				"basic functionality": {
-  					js: "2.0.0"
+  					js: "2.0.0",
+  					ios: "10.0.0",
+  					android: "10.0.0"
   				}
   			}
   		},
   		accumulated: {
-  			doc: "Gets the value of a cluster property accumulated so far. Can only be used in the `clusterProperties` option of a clustered GeoJSON source.",
+  			doc: "Returns the value of a cluster property accumulated so far. Can only be used in the `clusterProperties` option of a clustered GeoJSON source.",
   			group: "Feature data",
   			"sdk-support": {
   				"basic functionality": {
-  					js: "0.53.0"
+  					js: "0.53.0",
+  					android: "8.4.0",
+  					ios: "5.5.0",
+  					macos: "0.15.0"
   				}
   			}
   		},
@@ -3781,6 +3898,92 @@
   		}
   	}
   };
+  var projection = {
+  	name: {
+  		type: "enum",
+  		values: {
+  			albers: {
+  				doc: "An Albers equal-area projection centered on the continental United States. You can configure the projection for a different region by setting `center` and `parallels` properties. You may want to set max bounds to constrain the map to the relevant region."
+  			},
+  			equalEarth: {
+  				doc: "An Equal Earth projection."
+  			},
+  			equirectangular: {
+  				doc: "An Equirectangular projection. This projection is very similar to the Plate Carrée projection."
+  			},
+  			lambertConformalConic: {
+  				doc: "A Lambert conformal conic projection. You can configure the projection for a region by setting `center` and `parallels` properties. You may want to set max bounds to constrain the map to the relevant region."
+  			},
+  			mercator: {
+  				doc: "The Mercator projection is the default projection."
+  			},
+  			naturalEarth: {
+  				doc: "A Natural Earth projection."
+  			},
+  			winkelTripel: {
+  				doc: "A Winkel Tripel projection."
+  			}
+  		},
+  		"default": "mercator",
+  		doc: "The name of the projection to be used for rendering the map.",
+  		required: true,
+  		"sdk-support": {
+  			"basic functionality": {
+  				js: "2.6.0"
+  			}
+  		}
+  	},
+  	center: {
+  		type: "array",
+  		length: 2,
+  		value: "number",
+  		"property-type": "data-constant",
+  		transition: false,
+  		doc: "The reference longitude and latitude of the projection. `center` takes the form of [lng, lat]. This property is only configurable for conic projections (Albers and Lambert Conformal Conic). All other projections are centered on [0, 0].",
+  		example: [
+  			-96,
+  			37.5
+  		],
+  		requires: [
+  			{
+  				name: [
+  					"albers",
+  					"lambertConformalConic"
+  				]
+  			}
+  		],
+  		"sdk-support": {
+  			"basic functionality": {
+  				js: "2.6.0"
+  			}
+  		}
+  	},
+  	parallels: {
+  		type: "array",
+  		length: 2,
+  		value: "number",
+  		"property-type": "data-constant",
+  		transition: false,
+  		doc: "The standard parallels of the projection, denoting the desired latitude range with minimal distortion. `parallels` takes the form of [lat0, lat1]. This property is only configurable for conic projections (Albers and Lambert Conformal Conic).",
+  		example: [
+  			29.5,
+  			45.5
+  		],
+  		requires: [
+  			{
+  				name: [
+  					"albers",
+  					"lambertConformalConic"
+  				]
+  			}
+  		],
+  		"sdk-support": {
+  			"basic functionality": {
+  				js: "2.6.0"
+  			}
+  		}
+  	}
+  };
   var terrain = {
   	source: {
   		type: "string",
@@ -3788,7 +3991,9 @@
   		required: true,
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		}
   	},
@@ -3808,7 +4013,9 @@
   		doc: "Exaggerates the elevation of the terrain by multiplying the data from the DEM with this value.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		}
   	}
@@ -4345,9 +4552,6 @@
   		transition: false,
   		requires: [
   			{
-  				"!": "line-dasharray"
-  			},
-  			{
   				"!": "line-pattern"
   			},
   			{
@@ -4710,7 +4914,7 @@
   		minimum: 1,
   		transition: true,
   		units: "pixels",
-  		doc: "Radius of influence of one heatmap point in pixels. Increasing the value makes the heatmap smoother, but less detailed.",
+  		doc: "Radius of influence of one heatmap point in pixels. Increasing the value makes the heatmap smoother, but less detailed. `queryRenderedFeatures` on heatmap layers will return points within this radius.",
   		"sdk-support": {
   			"basic functionality": {
   				js: "0.41.0",
@@ -4893,7 +5097,7 @@
   		type: "color",
   		"default": "#000000",
   		transition: true,
-  		doc: "The color of the icon. This can only be used with sdf icons.",
+  		doc: "The color of the icon. This can only be used with [SDF icons](/help/troubleshooting/using-recolorable-images-in-mapbox-maps/).",
   		requires: [
   			"icon-image"
   		],
@@ -4925,7 +5129,7 @@
   		type: "color",
   		"default": "rgba(0, 0, 0, 0)",
   		transition: true,
-  		doc: "The color of the icon's halo. Icon halos can only be used with SDF icons.",
+  		doc: "The color of the icon's halo. Icon halos can only be used with [SDF icons](/help/troubleshooting/using-recolorable-images-in-mapbox-maps/).",
   		requires: [
   			"icon-image"
   		],
@@ -5731,7 +5935,9 @@
   		doc: "The type of the sky",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		expression: {
@@ -5759,7 +5965,9 @@
   		doc: "Position of the sun center [a azimuthal angle, p polar angle]. The azimuthal angle indicates the position of the sun relative to 0° north, where degrees proceed clockwise. The polar angle indicates the height of the sun, where 0° is directly above, at zenith, and 90° at the horizon. When this property is ommitted, the sun center is directly inherited from the light position.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		requires: [
@@ -5789,7 +5997,9 @@
   		doc: "Intensity of the sun as a light source in the atmosphere (on a scale from 0 to a 100). Setting higher values will brighten up the sky.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		"property-type": "data-constant"
@@ -5820,7 +6030,9 @@
   		doc: "Position of the gradient center [a azimuthal angle, p polar angle]. The azimuthal angle indicates the position of the gradient center relative to 0° north, where degrees proceed clockwise. The polar angle indicates the height of the gradient center, where 0° is directly above, at zenith, and 90° at the horizon.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		expression: {
@@ -5845,7 +6057,9 @@
   		doc: "The angular distance (measured in degrees) from `sky-gradient-center` up to which the gradient extends. A value of 180 causes the gradient to wrap around to the opposite direction from `sky-gradient-center`.",
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		expression: {
@@ -5880,7 +6094,9 @@
   		],
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			},
   			"data-driven styling": {
   			}
@@ -5905,7 +6121,9 @@
   		],
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		"property-type": "data-constant"
@@ -5922,7 +6140,9 @@
   		],
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		"property-type": "data-constant"
@@ -5936,7 +6156,9 @@
   		transition: true,
   		"sdk-support": {
   			"basic functionality": {
-  				js: "2.0.0"
+  				js: "2.0.0",
+  				ios: "10.0.0",
+  				android: "10.0.0"
   			}
   		},
   		expression: {
@@ -6017,6 +6239,25 @@
   	layout_raster: layout_raster,
   	layout_hillshade: layout_hillshade,
   	filter: filter,
+  	filter_symbol: filter_symbol,
+  	filter_fill: filter_fill,
+  	filter_line: filter_line,
+  	filter_circle: filter_circle,
+  	"filter_fill-extrusion": {
+  	type: "boolean",
+  	doc: "Expression which determines whether or not to display a Polygon. Fill-extrusion layer does NOT support dynamic filtering, meaning this expression can NOT use the `[\"pitch\"]` and `[\"distance-from-center\"]` expressions to reference the current state of the view.",
+  	"default": false,
+  	transition: false,
+  	"property-type": "data-driven",
+  	expression: {
+  		interpolated: false,
+  		parameters: [
+  			"zoom",
+  			"feature"
+  		]
+  	}
+  },
+  	filter_heatmap: filter_heatmap,
   	filter_operator: filter_operator,
   	geometry_type: geometry_type,
   	"function": {
@@ -6086,6 +6327,7 @@
   	expression_name: expression_name,
   	fog: fog,
   	light: light,
+  	projection: projection,
   	terrain: terrain,
   	paint: paint,
   	paint_fill: paint_fill,
@@ -6305,6 +6547,7 @@
   		"sdk-support": {
   			"basic functionality": {
   				js: "0.50.0",
+  				android: "7.0.0",
   				ios: "4.7.0",
   				macos: "0.13.0"
   			}
@@ -9028,6 +9271,8 @@
           this._parseColorCache = {};
           this.availableImages = null;
           this.canonical = null;
+          this.featureTileCoord = null;
+          this.featureDistanceData = null;
       }
       id() {
           return this.feature && 'id' in this.feature ? this.feature.id : null;
@@ -9043,6 +9288,20 @@
       }
       properties() {
           return this.feature && this.feature.properties || {};
+      }
+      distanceFromCenter() {
+          if (this.featureTileCoord && this.featureDistanceData) {
+              const c = this.featureDistanceData.center;
+              const scale = this.featureDistanceData.scale;
+              const {x, y} = this.featureTileCoord;
+              const dX = x * scale - c[0];
+              const dY = y * scale - c[1];
+              const bX = this.featureDistanceData.bearing[0];
+              const bY = this.featureDistanceData.bearing[1];
+              const dist = bX * dX + bY * dY;
+              return dist;
+          }
+          return 0;
       }
       parseColor(input) {
           let cached = this._parseColorCache[input];
@@ -9737,7 +9996,9 @@
           'line-progress',
           'sky-radial-progress',
           'accumulated',
-          'is-supported-script'
+          'is-supported-script',
+          'pitch',
+          'distance-from-center'
       ]);
   }
 
@@ -11219,6 +11480,16 @@
           [],
           ctx => ctx.globals.zoom
       ],
+      'pitch': [
+          NumberType,
+          [],
+          ctx => ctx.globals.pitch || 0
+      ],
+      'distance-from-center': [
+          NumberType,
+          [],
+          ctx => ctx.distanceFromCenter()
+      ],
       'heatmap-density': [
           NumberType,
           [],
@@ -11865,22 +12136,26 @@
           this._defaultValue = propertySpec ? getDefaultValue(propertySpec) : null;
           this._enumValues = propertySpec && propertySpec.type === 'enum' ? propertySpec.values : null;
       }
-      evaluateWithoutErrorHandling(globals, feature, featureState, canonical, availableImages, formattedSection) {
+      evaluateWithoutErrorHandling(globals, feature, featureState, canonical, availableImages, formattedSection, featureTileCoord, featureDistanceData) {
           this._evaluator.globals = globals;
           this._evaluator.feature = feature;
           this._evaluator.featureState = featureState;
           this._evaluator.canonical = canonical;
           this._evaluator.availableImages = availableImages || null;
           this._evaluator.formattedSection = formattedSection;
+          this._evaluator.featureTileCoord = featureTileCoord || null;
+          this._evaluator.featureDistanceData = featureDistanceData || null;
           return this.expression.evaluate(this._evaluator);
       }
-      evaluate(globals, feature, featureState, canonical, availableImages, formattedSection) {
+      evaluate(globals, feature, featureState, canonical, availableImages, formattedSection, featureTileCoord, featureDistanceData) {
           this._evaluator.globals = globals;
           this._evaluator.feature = feature || null;
           this._evaluator.featureState = featureState || null;
           this._evaluator.canonical = canonical;
           this._evaluator.availableImages = availableImages || null;
           this._evaluator.formattedSection = formattedSection || null;
+          this._evaluator.featureTileCoord = featureTileCoord || null;
+          this._evaluator.featureDistanceData = featureDistanceData || null;
           try {
               const val = this.expression.evaluate(this._evaluator);
               if (val === null || val === undefined || typeof val === 'number' && val !== val) {
@@ -11957,7 +12232,11 @@
       if (!isFeatureConstant$1 && !supportsPropertyExpression(propertySpec)) {
           return error([new ParsingError$1('', 'data expressions not supported')]);
       }
-      const isZoomConstant = isGlobalPropertyConstant(parsed, ['zoom']);
+      const isZoomConstant = isGlobalPropertyConstant(parsed, [
+          'zoom',
+          'pitch',
+          'distance-from-center'
+      ]);
       if (!isZoomConstant && !supportsZoomExpression(propertySpec)) {
           return error([new ParsingError$1('', 'zoom expressions not supported')]);
       }
@@ -12365,6 +12644,26 @@
       return result;
   }
 
+  function unbundle(value) {
+      if (value instanceof Number || value instanceof String || value instanceof Boolean) {
+          return value.valueOf();
+      } else {
+          return value;
+      }
+  }
+  function deepUnbundle(value) {
+      if (Array.isArray(value)) {
+          return value.map(deepUnbundle);
+      } else if (value instanceof Object && !(value instanceof Number || value instanceof String || value instanceof Boolean)) {
+          const unbundledValue = {};
+          for (const key in value) {
+              unbundledValue[key] = deepUnbundle(value[key]);
+          }
+          return unbundledValue;
+      }
+      return unbundle(value);
+  }
+
   function isExpressionFilter(filter) {
       if (filter === true || filter === false) {
           return true;
@@ -12400,39 +12699,145 @@
           return true;
       }
   }
-  const filterSpec = {
-      'type': 'boolean',
-      'default': false,
-      'transition': false,
-      'property-type': 'data-driven',
-      'expression': {
-          'interpolated': false,
-          'parameters': [
-              'zoom',
-              'feature'
-          ]
-      }
-  };
-  function createFilter(filter) {
+  function createFilter(filter, layerType = 'fill') {
       if (filter === null || filter === undefined) {
           return {
               filter: () => true,
-              needGeometry: false
+              needGeometry: false,
+              needFeature: false
           };
       }
       if (!isExpressionFilter(filter)) {
           filter = convertFilter$1(filter);
       }
-      const compiled = createExpression(filter, filterSpec);
-      if (compiled.result === 'error') {
-          throw new Error(compiled.value.map(err => `${ err.key }: ${ err.message }`).join(', '));
-      } else {
-          const needGeometry = geometryNeeded(filter);
-          return {
-              filter: (globalProperties, feature, canonical) => compiled.value.evaluate(globalProperties, feature, {}, canonical),
-              needGeometry
-          };
+      const filterExp = filter;
+      let staticFilter = true;
+      try {
+          staticFilter = extractStaticFilter(filterExp);
+      } catch (e) {
+          console.warn(`Failed to extract static filter. Filter will continue working, but at higher memory usage and slower framerate.
+This is most likely a bug, please report this via https://github.com/mapbox/mapbox-gl-js/issues/new?assignees=&labels=&template=Bug_report.md
+and paste the contents of this message in the report.
+Thank you!
+Filter Expression:
+${ JSON.stringify(filterExp, null, 2) }
+        `);
       }
+      const filterSpec = v8[`filter_${ layerType }`];
+      const compiledStaticFilter = createExpression(staticFilter, filterSpec);
+      let filterFunc = null;
+      if (compiledStaticFilter.result === 'error') {
+          throw new Error(compiledStaticFilter.value.map(err => `${ err.key }: ${ err.message }`).join(', '));
+      } else {
+          filterFunc = (globalProperties, feature, canonical) => compiledStaticFilter.value.evaluate(globalProperties, feature, {}, canonical);
+      }
+      let dynamicFilterFunc = null;
+      let needFeature = null;
+      if (staticFilter !== filterExp) {
+          const compiledDynamicFilter = createExpression(filterExp, filterSpec);
+          if (compiledDynamicFilter.result === 'error') {
+              throw new Error(compiledDynamicFilter.value.map(err => `${ err.key }: ${ err.message }`).join(', '));
+          } else {
+              dynamicFilterFunc = (globalProperties, feature, canonical, featureTileCoord, featureDistanceData) => compiledDynamicFilter.value.evaluate(globalProperties, feature, {}, canonical, undefined, undefined, featureTileCoord, featureDistanceData);
+              needFeature = !isFeatureConstant(compiledDynamicFilter.value.expression);
+          }
+      }
+      filterFunc = filterFunc;
+      const needGeometry = geometryNeeded(staticFilter);
+      return {
+          filter: filterFunc,
+          dynamicFilter: dynamicFilterFunc ? dynamicFilterFunc : undefined,
+          needGeometry,
+          needFeature: !!needFeature
+      };
+  }
+  function extractStaticFilter(filter) {
+      if (!isDynamicFilter(filter)) {
+          return filter;
+      }
+      let result = deepUnbundle(filter);
+      unionDynamicBranches(result);
+      result = collapseDynamicBooleanExpressions(result);
+      return result;
+  }
+  function collapseDynamicBooleanExpressions(expression) {
+      if (!Array.isArray(expression)) {
+          return expression;
+      }
+      const collapsed = collapsedExpression(expression);
+      if (collapsed === true) {
+          return collapsed;
+      } else {
+          return collapsed.map(subExpression => collapseDynamicBooleanExpressions(subExpression));
+      }
+  }
+  function unionDynamicBranches(filter) {
+      let isBranchingDynamically = false;
+      const branches = [];
+      if (filter[0] === 'case') {
+          for (let i = 1; i < filter.length - 1; i += 2) {
+              isBranchingDynamically = isBranchingDynamically || isDynamicFilter(filter[i]);
+              branches.push(filter[i + 1]);
+          }
+          branches.push(filter[filter.length - 1]);
+      } else if (filter[0] === 'match') {
+          isBranchingDynamically = isBranchingDynamically || isDynamicFilter(filter[1]);
+          for (let i = 2; i < filter.length - 1; i += 2) {
+              branches.push(filter[i + 1]);
+          }
+          branches.push(filter[filter.length - 1]);
+      } else if (filter[0] === 'step') {
+          isBranchingDynamically = isBranchingDynamically || isDynamicFilter(filter[1]);
+          for (let i = 1; i < filter.length - 1; i += 2) {
+              branches.push(filter[i + 1]);
+          }
+      }
+      if (isBranchingDynamically) {
+          filter.length = 0;
+          filter.push('any', ...branches);
+      }
+      for (let i = 1; i < filter.length; i++) {
+          unionDynamicBranches(filter[i]);
+      }
+  }
+  function isDynamicFilter(filter) {
+      if (!Array.isArray(filter)) {
+          return false;
+      }
+      if (isRootExpressionDynamic(filter[0])) {
+          return true;
+      }
+      for (let i = 1; i < filter.length; i++) {
+          const child = filter[i];
+          if (isDynamicFilter(child)) {
+              return true;
+          }
+      }
+      return false;
+  }
+  function isRootExpressionDynamic(expression) {
+      return expression === 'pitch' || expression === 'distance-from-center';
+  }
+  const dynamicConditionExpressions = new Set([
+      'in',
+      '==',
+      '!=',
+      '>',
+      '>=',
+      '<',
+      '<=',
+      'to-boolean'
+  ]);
+  function collapsedExpression(expression) {
+      if (dynamicConditionExpressions.has(expression[0])) {
+          for (let i = 1; i < expression.length; i++) {
+              const param = expression[i];
+              if (isDynamicFilter(param)) {
+                  return true;
+              }
+          }
+      }
+      return expression;
   }
   function compare(a, b) {
       return a < b ? -1 : a > b ? 1 : 0;
@@ -12891,7 +13296,8 @@
       setTransition: 'setTransition',
       setLight: 'setLight',
       setTerrain: 'setTerrain',
-      setFog: 'setFog'
+      setFog: 'setFog',
+      setProjection: 'setProjection'
   };
   function addSource(sourceId, after, commands) {
       commands.push({
@@ -13198,6 +13604,12 @@
                   args: [after.fog]
               });
           }
+          if (!deepEqual(before.projection, after.projection)) {
+              commands.push({
+                  command: operations.setProjection,
+                  args: [after.projection]
+              });
+          }
           const sourcesRemoved = {};
           const removeOrAddSourceCommands = [];
           diffSources(before.sources, after.sources, removeOrAddSourceCommands, sourcesRemoved);
@@ -13270,26 +13682,6 @@
       } else {
           return [];
       }
-  }
-
-  function unbundle(value) {
-      if (value instanceof Number || value instanceof String || value instanceof Boolean) {
-          return value.valueOf();
-      } else {
-          return value;
-      }
-  }
-  function deepUnbundle(value) {
-      if (Array.isArray(value)) {
-          return value.map(deepUnbundle);
-      } else if (value instanceof Object && !(value instanceof Number || value instanceof String || value instanceof Boolean)) {
-          const unbundledValue = {};
-          for (const key in value) {
-              unbundledValue[key] = deepUnbundle(value[key]);
-          }
-          return unbundledValue;
-      }
-      return unbundle(value);
   }
 
   function validateObject(options) {
@@ -13596,8 +13988,8 @@
       if (options.expressionContext === 'property' && options.propertyType === 'layout' && !isStateConstant(expressionObj)) {
           return [new ValidationError(options.key, options.value, '"feature-state" data expressions are not supported with layout properties.')];
       }
-      if (options.expressionContext === 'filter' && !isStateConstant(expressionObj)) {
-          return [new ValidationError(options.key, options.value, '"feature-state" data expressions are not supported with filters.')];
+      if (options.expressionContext === 'filter') {
+          return disallowedFilterParameters(expressionObj, options);
       }
       if (options.expressionContext && options.expressionContext.indexOf('cluster') === 0) {
           if (!isGlobalPropertyConstant(expressionObj, [
@@ -13611,6 +14003,30 @@
           }
       }
       return [];
+  }
+  function disallowedFilterParameters(e, options) {
+      const disallowedParameters = new Set([
+          'zoom',
+          'feature-state',
+          'pitch',
+          'distance-from-center'
+      ]);
+      for (const param of options.valueSpec.expression.parameters) {
+          disallowedParameters.delete(param);
+      }
+      if (disallowedParameters.size === 0) {
+          return [];
+      }
+      const errors = [];
+      if (e instanceof CompoundExpression) {
+          if (disallowedParameters.has(e.name)) {
+              return [new ValidationError(options.key, options.value, `["${ e.name }"] expression is not supported in a filter for a ${ options.object.type } layer with id: ${ options.object.id }`)];
+          }
+      }
+      e.eachChild(arg => {
+          errors.push(...disallowedFilterParameters(arg, options));
+      });
+      return errors;
   }
 
   function validateBoolean(options) {
@@ -13655,9 +14071,10 @@
 
   function validateFilter(options) {
       if (isExpressionFilter(deepUnbundle(options.value))) {
+          const layerType = deepUnbundle(options.layerType);
           return validateExpression(extend({}, options, {
               expressionContext: 'filter',
-              valueSpec: { value: 'boolean' }
+              valueSpec: options.styleSpec[`filter_${ layerType || 'fill' }`]
           }));
       } else {
           return validateNonExpressionFilter(options);
@@ -13893,7 +14310,9 @@
                       objectKey: 'type'
                   });
               },
-              filter: validateFilter,
+              filter(options) {
+                  return validateFilter(extend({ layerType: type }, options));
+              },
               layout(options) {
                   return validateObject({
                       layer,
@@ -14150,9 +14569,6 @@
           errors = errors.concat([new ValidationError('fog', fog, `object expected, ${ rootType } found`)]);
           return errors;
       }
-      if (fog.range && !isExpression(deepUnbundle(fog.range)) && fog.range[0] >= fog.range[1]) {
-          errors = errors.concat([new ValidationError('fog', fog, 'fog.range[0] can\'t be greater than or equal to fog.range[1]')]);
-      }
       for (const key in fog) {
           const transitionMatch = key.match(/^(.*)-transition$/);
           if (transitionMatch && fogSpec[transitionMatch[1]] && fogSpec[transitionMatch[1]].transition) {
@@ -14192,6 +14608,29 @@
       return validateExpression(options);
   }
 
+  function validateProjection(options) {
+      const projection = options.value;
+      const styleSpec = options.styleSpec;
+      const projectionSpec = styleSpec.projection;
+      const style = options.style;
+      let errors = [];
+      const rootType = getType(projection);
+      if (rootType === 'object') {
+          for (const key in projection) {
+              errors = errors.concat(validate({
+                  key,
+                  value: projection[key],
+                  valueSpec: projectionSpec[key],
+                  style,
+                  styleSpec
+              }));
+          }
+      } else if (rootType !== 'string') {
+          errors = errors.concat([new ValidationError('projection', projection, `object or string expected, ${ rootType } found`)]);
+      }
+      return errors;
+  }
+
   const VALIDATORS = {
       '*'() {
           return [];
@@ -14212,7 +14651,8 @@
       'fog': validateFog,
       'string': validateString,
       'formatted': validateFormatted,
-      'resolvedImage': validateImage
+      'resolvedImage': validateImage,
+      'projection': validateProjection
   };
   function validate(options) {
       const value = options.value;
@@ -14994,6 +15434,11 @@
       });
       return errors;
   }
+  const acceptedSourceTypes = new Set([
+      'vector',
+      'raster',
+      'raster-dem'
+  ]);
   function getSourceErrors(source, i) {
       const errors = [];
       const sourceKeys = [
@@ -15002,9 +15447,12 @@
           'tileSize'
       ];
       errors.push(...getAllowedKeyErrors(source, sourceKeys, 'source'));
+      if (!acceptedSourceTypes.has(String(source.type))) {
+          errors.push(new ValidationError(`sources[${ i }].type`, source.type, `Expected one of [${ Array.from(acceptedSourceTypes).join(', ') }]`));
+      }
       const sourceUrlPattern = /^mapbox:\/\/([^/]*)$/;
-      if (!isValid(source.url, sourceUrlPattern)) {
-          errors.push(new ValidationError(`sources[${ i }]`, source.url, 'Source url must be a valid Mapbox tileset url'));
+      if (!source.url || !isValid(source.url, sourceUrlPattern)) {
+          errors.push(new ValidationError(`sources[${ i }].url`, source.url, 'Expected a valid Mapbox tileset url'));
       }
       return errors;
   }
@@ -15032,7 +15480,8 @@
           'draft',
           'created',
           'modified',
-          'visibility'
+          'visibility',
+          'protected'
       ];
       const allowedKeyErrors = getAllowedKeyErrors(style, [
           ...specKeys,
@@ -15053,6 +15502,9 @@
       const visibilityPattern = /^(public|private)$/;
       if (!isValid(style.visibility, visibilityPattern)) {
           errors.push(new ValidationError('visibility', style.visibility, 'Style visibility must be public or private'));
+      }
+      if (style.protected !== undefined && getType(style.protected) !== 'boolean') {
+          errors.push(new ValidationError('protected', style.protected, 'Style protection must be true or false'));
       }
       return errors;
   }
