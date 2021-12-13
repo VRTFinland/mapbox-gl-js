@@ -4,7 +4,6 @@ const {
     members,
     size,
     usedTypes,
-    hasAnchorPoint,
     layoutClass,
     includeStructAccessors
 } = locals
@@ -37,9 +36,6 @@ class <%=StructTypeClass%> extends Struct {
     // property declarations
     for (const {name} of components) {-%>
     <%=name%>: number;
-<%  }
-    if (hasAnchorPoint) { -%>
-    anchorPoint: Point;
 <%  } -%>
 <%
 for (const {name, member, component} of components) {
@@ -51,17 +47,11 @@ for (const {name, member, component} of components) {
     get <%=name%>() { return <%=componentAccess%>; }
 <%
 // generate setters for properties that are updated during runtime symbol placement; others are read-only
-if (name === 'crossTileID' || name === 'placedOrientation' || name === 'hidden') {
+if (name === 'crossTileID' || name === 'placedOrientation' || name === 'hidden' || name === 'flipState') {
 -%>
     set <%=name%>(x: number) { <%=componentAccess%> = x; }
 <%
 }
-}
-// Special case used for the CollisionBoxArray type
-if (hasAnchorPoint) {
--%>
-    get anchorPoint() { return new Point(this.anchorPointX, this.anchorPointY); }
-<%
 }
 -%>
 }
