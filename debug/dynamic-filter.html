@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mapbox GL JS debug page</title>
+    <meta charset='utf-8'>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.3.0/gl-matrix-min.js"></script>
+    <link rel='stylesheet' href='../dist/mapbox-gl.css' />
+    <style>
+        body { margin: 0; padding: 0; }
+        html, body, #map { height: 100%; }
+        #tooltip {
+            position: absolute;
+            left: 0px;
+            top: 0px;
+            background-color: white;
+            z-index: 5;
+        }
+        #checkboxes {
+            position: absolute;
+            background: #fff;
+            top:0;
+            left:0;
+            padding:10px;
+        }
+    </style>
+</head>
+
+<body>
+<div id='map'>
+    <div id='tooltip'></div>
+</div>
+<div id='checkboxes'>
+    <label><input id='show-scales' type='checkbox'> Show distance scales</label>
+</div>
+
+<script src='../dist/mapbox-gl-dev.js'></script>
+<script src='../debug/access_token_generated.js'></script>
+<script>
+
+/*global glMatrix, turf*/
+
+var map = window.map = new mapboxgl.Map({
+    container: 'map',
+    zoom: 14,
+    center: [-122.41514417600938, 37.74792307527825],
+    style: 'mapbox://styles/mapbox/streets-v11',
+    // hash: true
+});
+
+function calcMercatorDistanceMatrix() {
+    const center = map.transform.point;
+
+    const m = new Float64Array(16);
+    const worldSize = map.transform.worldSize;
+    const windowScaleFactor = 1 / map.transform.height;
+    glMatrix.mat4.fromScaling(m, [windowScaleFactor, -windowScaleFactor, windowScaleFactor]);
+    glMatrix.mat4.rotateZ(m, m, map.transform.angle);
+    glMatrix.mat4.translate(m, m, [-center.x, -center.y, 0]);
+
+    return glMatrix.mat4.scale([], m, [worldSize, worldSize, 1]);
+}
+
+function generateDistanceScales() {
+    const center = map.getCenter();
+    const bearing = map.getBearing();
+    const numSteps = 10;
+    const step = 0.25;
+
+    const matrix = glMatrix.mat4.invert([], calcMercatorDistanceMatrix());
+    const lines = [];
+    for (let i = -numSteps; i <= numSteps; i++) {
+        const distance = step * i;
+        const v0 = [-2, distance, 0];
+        const v1 = [0, distance, 0];
+        const v2 = [2, distance, 0];
+        const p0 = new mapboxgl.MercatorCoordinate(...glMatrix.vec3.transformMat4([], v0, matrix)).toLngLat();
+        const p1 = new mapboxgl.MercatorCoordinate(...glMatrix.vec3.transformMat4([], v1, matrix)).toLngLat();
+        const p2 = new mapboxgl.MercatorCoordinate(...glMatrix.vec3.transformMat4([], v2, matrix)).toLngLat();
+        const line = turf.lineString([[p0.lng, p0.lat], [p1.lng, p1.lat], [p2.lng, p2.lat]], {distance: `${distance.toFixed(2)}`});
+        lines.push(line);
+    }
+
+    return turf.featureCollection(lines);
+}
+
+const tooltip = document.getElementById('tooltip');
+map.on('mousemove', (e) => {
+    const loc = map.unproject(e.point);
+    const m = calcMercatorDistanceMatrix();
+    const {x, y, z} = mapboxgl.MercatorCoordinate.fromLngLat(loc);
+    const v = glMatrix.vec3.transformMat4([], [x, y, z], m);
+
+    const dist = v[1];
+    tooltip.innerText = dist.toFixed(2);
+    tooltip.style.transform = `translate(${e.point.x + 10}px,${e.point.y + 10}px)`;
+});
+
+map.once('load', () => {
+    map.setFilter('building-number-label',
+    ["case",
+        ["<", ["pitch"], 60], true,
+        ["all", [">=", ["pitch"], 60], ["<", ["distance-from-center"], 0]], true,
+        false
+    ]
+    );
+
+    map.addSource('rings', {
+        type: 'geojson',
+        data: {
+            "type": "FeatureCollection",
+            "features": []
+        }
+    });
+
+    map.addLayer({
+        type: 'line',
+        id: 'rings-layer',
+        source: 'rings',
+        paint: {
+            "line-width": 10
+        }
+    });
+
+    map.addLayer({
+        type: 'symbol',
+        id: 'rings-labels',
+        source: 'rings',
+        layout: {
+            "symbol-placement": 'line',
+            "text-field": ["get", "distance"],
+            "text-pitch-alignment": "viewport",
+            "text-allow-overlap": true
+        },
+        paint: {
+            "text-color": 'red',
+            "text-halo-color": 'white',
+            "text-halo-width": 2
+        }
+    });
+
+    let showScales = false;
+    document.getElementById('show-scales').onclick = function() {
+        showScales = !!this.checked;
+        map.setLayoutProperty('rings-layer', 'visibility',  showScales ? 'visible' : 'none');
+        map.setLayoutProperty('rings-labels', 'visibility',  showScales ? 'visible' : 'none');
+    };
+
+    const poiLayer = map.getLayer('poi-label').serialize();
+    const nearFilter = [
+        'all',
+        poiLayer.filter,
+        ['any',
+            ['<', ['pitch'], 60],
+            ['all', ['>=', ['pitch'], 60], ['<=', ['distance-from-center'], 1]]
+        ]
+    ];
+
+    // Set current poi-layer so that it only renders in the "near" area
+    map.setFilter('poi-label', nearFilter);
+    map.addLayer({
+        'id': 'sky',
+        'type': 'sky',
+        'paint': {
+            'sky-type': 'atmosphere',
+            'sky-atmosphere-sun-intensity': 5,
+        }
+    });
+    map.setFog({'range': [2, 10]});
+
+    const farFilter = [
+        'all',
+        poiLayer.filter,
+        ['>', ['pitch'], 60],
+        ['>=', ['distance-from-center'], 2]
+    ];
+
+    map.loadImage('./leader_line_s.png', (_, img) => {
+        map.addImage('leader_line', img);
+        const poiFarLayer = JSON.parse(JSON.stringify(poiLayer));
+        poiFarLayer.id = 'poi-label-elevated';
+        poiFarLayer.filter = farFilter;
+        poiFarLayer.layout['icon-image'] = 'leader_line';
+        poiFarLayer.paint['icon-color'] =  poiFarLayer.paint['text-color'];
+        poiFarLayer.paint['icon-halo-width'] =  poiFarLayer.paint['text-halo-width'];
+        poiFarLayer.paint['icon-halo-blur'] =  poiFarLayer.paint['text-halo-blur'];
+        poiFarLayer.paint['icon-halo-color'] =  poiFarLayer.paint['text-halo-color'];
+        poiFarLayer.layout['icon-anchor'] = 'bottom';
+        poiFarLayer.layout['icon-size'] = 1;
+        poiFarLayer.layout['text-anchor'] = 'bottom';
+        poiFarLayer.layout['text-field'] = ['format', ['image', ['concat', ['get', 'maki'], '-11']], {}, '\n', {}, poiLayer.layout['text-field'], {}];
+        poiFarLayer.layout['text-offset'] = [
+            "step",
+            ["zoom"],
+            [
+                "step",
+                ["get", "sizerank"],
+                ["literal", [0, -12]],
+                5,
+                ["literal", [0, -9.75]]
+            ],
+            17,
+            [
+                "step",
+                ["get", "sizerank"],
+                ["literal", [0, -12]],
+                13,
+                ["literal", [0, -9.75]]
+            ]
+        ];
+
+        map.addLayer(poiFarLayer, 'poi-label');
+    });
+
+    map.on('idle', () => {
+        if (showScales) {
+            const scale = generateDistanceScales();
+            map.getSource('rings').setData(scale);
+        }
+    });
+
+});
+
+</script>
+</body>
+</html>

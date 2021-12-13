@@ -8,7 +8,6 @@ import loadTileJSON from './load_tilejson.js';
 import {postTurnstileEvent} from '../util/mapbox.js';
 import TileBounds from './tile_bounds.js';
 import Texture from '../render/texture.js';
-import browser from '../util/browser.js';
 
 import {cacheEntryPossiblyAdded} from '../util/tile_request_cache.js';
 
@@ -131,7 +130,7 @@ class RasterTileSource extends Evented implements Source {
                     tile.texture.update(img, {useMipmap: true});
                 } else {
                     tile.texture = new Texture(context, img, gl.RGBA, {useMipmap: true});
-                    tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE, gl.LINEAR_MIPMAP_NEAREST);
+                    tile.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
 
                     if (context.extTextureFilterAnisotropic) {
                         gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
