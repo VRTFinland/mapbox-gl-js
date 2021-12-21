@@ -387,7 +387,7 @@ function keysDifference(obj, other) {
     }
     return difference;
 }
-function extend$1(dest, ...sources) {
+function extend(dest, ...sources) {
     for (const src of sources) {
         for (const k in src) {
             dest[k] = src[k];
@@ -455,11 +455,11 @@ function filterObject(input, iterator, context) {
     }
     return output;
 }
-function clone$2(input) {
+function clone(input) {
     if (Array.isArray(input)) {
-        return input.map(clone$2);
+        return input.map(clone);
     } else if (typeof input === 'object' && input) {
-        return mapObject(input, clone$2);
+        return mapObject(input, clone);
     } else {
         return input;
     }
@@ -543,7 +543,7 @@ function b64DecodeUnicode(str) {
 let linkEl;
 let reducedMotionQuery;
 let stubTime;
-const exported$1 = {
+const exported = {
     now() {
         if (stubTime !== undefined) {
             return stubTime;
@@ -625,7 +625,7 @@ const config = {
     MAX_PARALLEL_IMAGE_REQUESTS: 16
 };
 
-const exported = {
+const exported$1 = {
     supported: false,
     testSupport
 };
@@ -663,7 +663,7 @@ function testWebpTextureUpload(gl) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, webpImgTest);
         if (gl.isContextLost())
             return;
-        exported.supported = true;
+        exported$1.supported = true;
     } catch (e) {
     }
     gl.deleteTexture(texture);
@@ -752,7 +752,7 @@ class RequestManager {
             return tileURL;
         const urlObject = parseUrl(tileURL);
         const imageExtensionRe = /(\.(png|jpg)\d*)(?=$)/;
-        const extension = exported.supported ? '.webp' : '$1';
+        const extension = exported$1.supported ? '.webp' : '$1';
         const use2xAs512 = rasterTileSize && urlObject.authority !== 'raster' && rasterTileSize === 512;
         const suffix = use2x || use2xAs512 ? '@2x' : '';
         urlObject.path = urlObject.path.replace(imageExtensionRe, `${ suffix }${ extension }`);
@@ -947,7 +947,7 @@ class TelemetryEvent {
             skuId: SKU_ID,
             userId: this.anonId
         };
-        const finalPayload = additionalPayload ? extend$1(payload, additionalPayload) : payload;
+        const finalPayload = additionalPayload ? extend(payload, additionalPayload) : payload;
         const request = {
             url: formatUrl(eventsUrlObject),
             headers: { 'Content-Type': 'text/plain' },
@@ -1382,16 +1382,16 @@ const makeRequest = function (requestParameters, callback) {
     return makeXMLHttpRequest(requestParameters, callback);
 };
 const getJSON = function (requestParameters, callback) {
-    return makeRequest(extend$1(requestParameters, { type: 'json' }), callback);
+    return makeRequest(extend(requestParameters, { type: 'json' }), callback);
 };
 const getArrayBuffer = function (requestParameters, callback) {
-    return makeRequest(extend$1(requestParameters, { type: 'arrayBuffer' }), callback);
+    return makeRequest(extend(requestParameters, { type: 'arrayBuffer' }), callback);
 };
 const postData = function (requestParameters, callback) {
-    return makeRequest(extend$1(requestParameters, { method: 'POST' }), callback);
+    return makeRequest(extend(requestParameters, { method: 'POST' }), callback);
 };
 const getData = function (requestParameters, callback) {
-    return makeRequest(extend$1(requestParameters, { method: 'GET' }), callback);
+    return makeRequest(extend(requestParameters, { method: 'GET' }), callback);
 };
 function sameOrigin(url) {
     const a = window$1.document.createElement('a');
@@ -1429,7 +1429,7 @@ const resetImageRequestQueue = () => {
 };
 resetImageRequestQueue();
 const getImage = function (requestParameters, callback) {
-    if (exported.supported) {
+    if (exported$1.supported) {
         if (!requestParameters.headers) {
             requestParameters.headers = {};
         }
@@ -1518,13 +1518,13 @@ function _removeEventListener(type, listener, listenerList) {
 }
 class Event {
     constructor(type, data = {}) {
-        extend$1(this, data);
+        extend(this, data);
         this.type = type;
     }
 }
 class ErrorEvent extends Event {
     constructor(error, data = {}) {
-        super('error', extend$1({ error }, data));
+        super('error', extend({ error }, data));
     }
 }
 class Evented {
@@ -1564,7 +1564,7 @@ class Evented {
             }
             const parent = this._eventedParent;
             if (parent) {
-                extend$1(event, typeof this._eventedParentData === 'function' ? this._eventedParentData() : this._eventedParentData);
+                extend(event, typeof this._eventedParentData === 'function' ? this._eventedParentData() : this._eventedParentData);
                 parent.fire(event);
             }
         } else if (event instanceof ErrorEvent) {
@@ -1605,7 +1605,7 @@ function validateConstants(options) {
     }
 }
 
-function extend (output, ...inputs) {
+function extend$1 (output, ...inputs) {
     for (const input of inputs) {
         for (const k in input) {
             output[k] = input[k];
@@ -1680,16 +1680,16 @@ const ErrorType = { kind: 'error' };
 const CollatorType = { kind: 'collator' };
 const FormattedType = { kind: 'formatted' };
 const ResolvedImageType = { kind: 'resolvedImage' };
-function array$1(itemType, N) {
+function array(itemType, N) {
     return {
         kind: 'array',
         itemType,
         N
     };
 }
-function toString$1(type) {
+function toString(type) {
     if (type.kind === 'array') {
-        const itemType = toString$1(type.itemType);
+        const itemType = toString(type.itemType);
         return typeof type.N === 'number' ? `array<${ itemType }, ${ type.N }>` : type.itemType.kind === 'value' ? 'array' : `array<${ itemType }>`;
     } else {
         return type.kind;
@@ -1703,7 +1703,7 @@ const valueMemberTypes = [
     ColorType,
     FormattedType,
     ObjectType,
-    array$1(ValueType),
+    array(ValueType),
     ResolvedImageType
 ];
 function checkSubtype(expected, t) {
@@ -1722,7 +1722,7 @@ function checkSubtype(expected, t) {
             }
         }
     }
-    return `Expected ${ toString$1(expected) } but found ${ toString$1(t) } instead.`;
+    return `Expected ${ toString(expected) } but found ${ toString(t) } instead.`;
 }
 function isValidType(provided, allowedTypes) {
     return allowedTypes.some(t => t.kind === provided.kind);
@@ -2995,12 +2995,12 @@ function typeOf(value) {
                 break;
             }
         }
-        return array$1(itemType || ValueType, length);
+        return array(itemType || ValueType, length);
     } else {
         return ObjectType;
     }
 }
-function toString(value) {
+function toString$1(value) {
     const type = typeof value;
     if (value === null) {
         return '';
@@ -3065,7 +3065,7 @@ class RuntimeError {
     }
 }
 
-const types$1 = {
+const types = {
     string: StringType,
     number: NumberType,
     boolean: BooleanType,
@@ -3086,9 +3086,9 @@ class Assertion {
             let itemType;
             if (args.length > 2) {
                 const type = args[1];
-                if (typeof type !== 'string' || !(type in types$1) || type === 'object')
+                if (typeof type !== 'string' || !(type in types) || type === 'object')
                     return context.error('The item type argument of "array" must be one of string, number, boolean', 1);
-                itemType = types$1[type];
+                itemType = types[type];
                 i++;
             } else {
                 itemType = ValueType;
@@ -3101,9 +3101,9 @@ class Assertion {
                 N = args[2];
                 i++;
             }
-            type = array$1(itemType, N);
+            type = array(itemType, N);
         } else {
-            type = types$1[name];
+            type = types[name];
         }
         const parsed = [];
         for (; i < args.length; i++) {
@@ -3121,7 +3121,7 @@ class Assertion {
             if (!error) {
                 return value;
             } else if (i === this.args.length - 1) {
-                throw new RuntimeError(`Expected value to be of type ${ toString$1(this.type) }, but found ${ toString$1(typeOf(value)) } instead.`);
+                throw new RuntimeError(`Expected value to be of type ${ toString(this.type) }, but found ${ toString(typeOf(value)) } instead.`);
             }
         }
         return null;
@@ -3176,7 +3176,7 @@ class FormatExpression {
                 }
                 let font = null;
                 if (arg['text-font']) {
-                    font = context.parse(arg['text-font'], 1, array$1(StringType));
+                    font = context.parse(arg['text-font'], 1, array(StringType));
                     if (!font)
                         return null;
                 }
@@ -3214,7 +3214,7 @@ class FormatExpression {
             if (typeOf(evaluatedContent) === ResolvedImageType) {
                 return new FormattedSection('', evaluatedContent, null, null, null);
             }
-            return new FormattedSection(toString(evaluatedContent), null, section.scale ? section.scale.evaluate(ctx) : null, section.font ? section.font.evaluate(ctx).join(',') : null, section.textColor ? section.textColor.evaluate(ctx) : null);
+            return new FormattedSection(toString$1(evaluatedContent), null, section.scale ? section.scale.evaluate(ctx) : null, section.font ? section.font.evaluate(ctx).join(',') : null, section.textColor ? section.textColor.evaluate(ctx) : null);
         };
         return new Formatted(this.sections.map(evaluateSection));
     }
@@ -3290,7 +3290,7 @@ class ImageExpression {
     }
 }
 
-const types = {
+const types$1 = {
     'to-boolean': BooleanType,
     'to-color': ColorType,
     'to-number': NumberType,
@@ -3307,7 +3307,7 @@ class Coercion {
         const name = args[0];
         if ((name === 'to-boolean' || name === 'to-string') && args.length !== 2)
             return context.error(`Expected one argument.`);
-        const type = types[name];
+        const type = types$1[name];
         const parsed = [];
         for (let i = 1; i < args.length; i++) {
             const input = context.parse(args[i], i, ValueType);
@@ -3357,11 +3357,11 @@ class Coercion {
             }
             throw new RuntimeError(`Could not convert ${ JSON.stringify(value) } to number.`);
         } else if (this.type.kind === 'formatted') {
-            return Formatted.fromString(toString(this.args[0].evaluate(ctx)));
+            return Formatted.fromString(toString$1(this.args[0].evaluate(ctx)));
         } else if (this.type.kind === 'resolvedImage') {
-            return ResolvedImage.fromString(toString(this.args[0].evaluate(ctx)));
+            return ResolvedImage.fromString(toString$1(this.args[0].evaluate(ctx)));
         } else {
-            return toString(this.args[0].evaluate(ctx));
+            return toString$1(this.args[0].evaluate(ctx));
         }
     }
     eachChild(fn) {
@@ -3520,7 +3520,7 @@ class CompoundExpression {
                 const parsed = context.parse(args[i], 1 + actualTypes.length);
                 if (!parsed)
                     return null;
-                actualTypes.push(toString$1(parsed.type));
+                actualTypes.push(toString(parsed.type));
             }
             context.error(`Expected arguments of type ${ signatures }, but found (${ actualTypes.join(', ') }) instead.`);
         }
@@ -3535,9 +3535,9 @@ class CompoundExpression {
 }
 function stringifySignature(signature) {
     if (Array.isArray(signature)) {
-        return `(${ signature.map(toString$1).join(', ') })`;
+        return `(${ signature.map(toString).join(', ') })`;
     } else {
-        return `(${ toString$1(signature.type) }...)`;
+        return `(${ toString(signature.type) }...)`;
     }
 }
 
@@ -3595,17 +3595,17 @@ class CollatorExpression {
     }
 }
 
-const EXTENT$1 = 8192;
+const EXTENT = 8192;
 function updateBBox(bbox, coord) {
     bbox[0] = Math.min(bbox[0], coord[0]);
     bbox[1] = Math.min(bbox[1], coord[1]);
     bbox[2] = Math.max(bbox[2], coord[0]);
     bbox[3] = Math.max(bbox[3], coord[1]);
 }
-function mercatorXfromLng$1(lng) {
+function mercatorXfromLng(lng) {
     return (180 + lng) / 360;
 }
-function mercatorYfromLat$1(lat) {
+function mercatorYfromLat(lat) {
     return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
 }
 function boxWithinBox(bbox1, bbox2) {
@@ -3620,12 +3620,12 @@ function boxWithinBox(bbox1, bbox2) {
     return true;
 }
 function getTileCoordinates(p, canonical) {
-    const x = mercatorXfromLng$1(p[0]);
-    const y = mercatorYfromLat$1(p[1]);
+    const x = mercatorXfromLng(p[0]);
+    const y = mercatorYfromLat(p[1]);
     const tilesAtZoom = Math.pow(2, canonical.z);
     return [
-        Math.round(x * tilesAtZoom * EXTENT$1),
-        Math.round(y * tilesAtZoom * EXTENT$1)
+        Math.round(x * tilesAtZoom * EXTENT),
+        Math.round(y * tilesAtZoom * EXTENT)
     ];
 }
 function onBoundary(p, p1, p2) {
@@ -3756,10 +3756,10 @@ function resetBBox(bbox) {
     bbox[2] = bbox[3] = -Infinity;
 }
 function getTilePoints(geometry, pointBBox, polyBBox, canonical) {
-    const worldSize = Math.pow(2, canonical.z) * EXTENT$1;
+    const worldSize = Math.pow(2, canonical.z) * EXTENT;
     const shifts = [
-        canonical.x * EXTENT$1,
-        canonical.y * EXTENT$1
+        canonical.x * EXTENT,
+        canonical.y * EXTENT
     ];
     const tilePoints = [];
     for (const points of geometry) {
@@ -3775,10 +3775,10 @@ function getTilePoints(geometry, pointBBox, polyBBox, canonical) {
     return tilePoints;
 }
 function getTileLines(geometry, lineBBox, polyBBox, canonical) {
-    const worldSize = Math.pow(2, canonical.z) * EXTENT$1;
+    const worldSize = Math.pow(2, canonical.z) * EXTENT;
     const shifts = [
-        canonical.x * EXTENT$1,
-        canonical.y * EXTENT$1
+        canonical.x * EXTENT,
+        canonical.y * EXTENT
     ];
     const tileLines = [];
     for (const line of geometry) {
@@ -4255,7 +4255,7 @@ function number(a, b, t) {
 function color(from, to, t) {
     return new Color(number(from.r, to.r, t), number(from.g, to.g, t), number(from.b, to.b, t), number(from.a, to.a, t));
 }
-function array(from, to, t) {
+function array$1(from, to, t) {
     return from.map((d, i) => {
         return number(d, to[i], t);
     });
@@ -4265,7 +4265,7 @@ var interpolate = /*#__PURE__*/Object.freeze({
 __proto__: null,
 number: number,
 color: color,
-array: array
+array: array$1
 });
 
 const Xn = 0.95047, Yn = 1, Zn = 1.08883, t0 = 4 / 29, t1 = 6 / 29, t2 = 3 * t1 * t1, t3 = t1 * t1 * t1, deg2rad = Math.PI / 180, rad2deg = 180 / Math.PI;
@@ -4444,7 +4444,7 @@ class Interpolate {
             ]);
         }
         if (outputType.kind !== 'number' && outputType.kind !== 'color' && !(outputType.kind === 'array' && outputType.itemType.kind === 'number' && typeof outputType.N === 'number')) {
-            return context.error(`Type ${ toString$1(outputType) } is not interpolatable.`);
+            return context.error(`Type ${ toString(outputType) } is not interpolatable.`);
         }
         return new Interpolate(outputType, operator, interpolation, input, stops);
     }
@@ -4648,7 +4648,7 @@ class At {
         if (args.length !== 3)
             return context.error(`Expected 2 arguments, but found ${ args.length - 1 } instead.`);
         const index = context.parse(args[1], 1, NumberType);
-        const input = context.parse(args[2], 2, array$1(context.expectedType || ValueType));
+        const input = context.parse(args[2], 2, array(context.expectedType || ValueType));
         if (!index || !input)
             return null;
         const t = input.type;
@@ -4705,7 +4705,7 @@ class In {
                 NullType,
                 ValueType
             ])) {
-            return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(needle.type) } instead`);
+            return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(needle.type) } instead`);
         }
         return new In(needle, haystack);
     }
@@ -4720,13 +4720,13 @@ class In {
                 'number',
                 'null'
             ])) {
-            throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(typeOf(needle)) } instead.`);
+            throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(typeOf(needle)) } instead.`);
         }
         if (!isValidNativeType(haystack, [
                 'string',
                 'array'
             ])) {
-            throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString$1(typeOf(haystack)) } instead.`);
+            throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString(typeOf(haystack)) } instead.`);
         }
         return haystack.indexOf(needle) >= 0;
     }
@@ -4768,7 +4768,7 @@ class IndexOf {
                 NullType,
                 ValueType
             ])) {
-            return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(needle.type) } instead`);
+            return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(needle.type) } instead`);
         }
         if (args.length === 4) {
             const fromIndex = context.parse(args[3], 3, NumberType);
@@ -4788,13 +4788,13 @@ class IndexOf {
                 'number',
                 'null'
             ])) {
-            throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(typeOf(needle)) } instead.`);
+            throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(typeOf(needle)) } instead.`);
         }
         if (!isValidNativeType(haystack, [
                 'string',
                 'array'
             ])) {
-            throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString$1(typeOf(haystack)) } instead.`);
+            throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString(typeOf(haystack)) } instead.`);
         }
         if (this.fromIndex) {
             const fromIndex = this.fromIndex.evaluate(ctx);
@@ -5019,11 +5019,11 @@ class Slice {
         if (!input || !beginIndex)
             return null;
         if (!isValidType(input.type, [
-                array$1(ValueType),
+                array(ValueType),
                 StringType,
                 ValueType
             ])) {
-            return context.error(`Expected first argument to be of type array or string, but found ${ toString$1(input.type) } instead`);
+            return context.error(`Expected first argument to be of type array or string, but found ${ toString(input.type) } instead`);
         }
         if (args.length === 4) {
             const endIndex = context.parse(args[3], 3, NumberType);
@@ -5041,7 +5041,7 @@ class Slice {
                 'string',
                 'array'
             ])) {
-            throw new RuntimeError(`Expected first argument to be of type array or string, but found ${ toString$1(typeOf(input)) } instead.`);
+            throw new RuntimeError(`Expected first argument to be of type array or string, but found ${ toString(typeOf(input)) } instead.`);
         }
         if (this.endIndex) {
             const endIndex = this.endIndex.evaluate(ctx);
@@ -5138,16 +5138,16 @@ function makeComparison(op, compareBasic, compareWithCollator) {
             if (!lhs)
                 return null;
             if (!isComparableType(op, lhs.type)) {
-                return context.concat(1).error(`"${ op }" comparisons are not supported for type '${ toString$1(lhs.type) }'.`);
+                return context.concat(1).error(`"${ op }" comparisons are not supported for type '${ toString(lhs.type) }'.`);
             }
             let rhs = context.parse(args[2], 2, ValueType);
             if (!rhs)
                 return null;
             if (!isComparableType(op, rhs.type)) {
-                return context.concat(2).error(`"${ op }" comparisons are not supported for type '${ toString$1(rhs.type) }'.`);
+                return context.concat(2).error(`"${ op }" comparisons are not supported for type '${ toString(rhs.type) }'.`);
             }
             if (lhs.type.kind !== rhs.type.kind && lhs.type.kind !== 'value' && rhs.type.kind !== 'value') {
-                return context.error(`Cannot compare types '${ toString$1(lhs.type) }' and '${ toString$1(rhs.type) }'.`);
+                return context.error(`Cannot compare types '${ toString(lhs.type) }' and '${ toString(rhs.type) }'.`);
             }
             if (isOrderComparison) {
                 if (lhs.type.kind === 'value' && rhs.type.kind !== 'value') {
@@ -5316,7 +5316,7 @@ class Length {
         if (!input)
             return null;
         if (input.type.kind !== 'array' && input.type.kind !== 'string' && input.type.kind !== 'value')
-            return context.error(`Expected argument of type string or array, but found ${ toString$1(input.type) } instead.`);
+            return context.error(`Expected argument of type string or array, but found ${ toString(input.type) } instead.`);
         return new Length(input);
     }
     evaluate(ctx) {
@@ -5326,7 +5326,7 @@ class Length {
         } else if (Array.isArray(input)) {
             return input.length;
         } else {
-            throw new RuntimeError(`Expected value to be of type string or array, but found ${ toString$1(typeOf(input)) } instead.`);
+            throw new RuntimeError(`Expected value to be of type string or array, but found ${ toString(typeOf(input)) } instead.`);
         }
     }
     eachChild(fn) {
@@ -5424,10 +5424,10 @@ CompoundExpression.register(expressions, {
     'typeof': [
         StringType,
         [ValueType],
-        (ctx, [v]) => toString$1(typeOf(v.evaluate(ctx)))
+        (ctx, [v]) => toString(typeOf(v.evaluate(ctx)))
     ],
     'to-rgba': [
-        array$1(NumberType, 4),
+        array(NumberType, 4),
         [ColorType],
         (ctx, [v]) => {
             return v.evaluate(ctx).toArray();
@@ -5813,19 +5813,19 @@ CompoundExpression.register(expressions, {
     ],
     'filter-type-in': [
         BooleanType,
-        [array$1(StringType)],
+        [array(StringType)],
         (ctx, [v]) => v.value.indexOf(ctx.geometryType()) >= 0
     ],
     'filter-id-in': [
         BooleanType,
-        [array$1(ValueType)],
+        [array(ValueType)],
         (ctx, [v]) => v.value.indexOf(ctx.id()) >= 0
     ],
     'filter-in-small': [
         BooleanType,
         [
             StringType,
-            array$1(ValueType)
+            array(ValueType)
         ],
         (ctx, [k, v]) => v.value.indexOf(ctx.properties()[k.value]) >= 0
     ],
@@ -5833,7 +5833,7 @@ CompoundExpression.register(expressions, {
         BooleanType,
         [
             StringType,
-            array$1(ValueType)
+            array(ValueType)
         ],
         (ctx, [k, v]) => binarySearch(ctx.properties()[k.value], v.value, 0, v.value.length - 1)
     ],
@@ -5910,7 +5910,7 @@ CompoundExpression.register(expressions, {
     'concat': [
         StringType,
         varargs(ValueType),
-        (ctx, args) => args.map(arg => toString(arg.evaluate(ctx))).join('')
+        (ctx, args) => args.map(arg => toString$1(arg.evaluate(ctx))).join('')
     ],
     'resolved-locale': [
         StringType,
@@ -5971,7 +5971,7 @@ function createFunction(parameters, propertySpec) {
     const zoomDependent = zoomAndFeatureDependent || !featureDependent;
     const type = parameters.type || (supportsInterpolation(propertySpec) ? 'exponential' : 'interval');
     if (isColor) {
-        parameters = extend({}, parameters);
+        parameters = extend$1({}, parameters);
         if (parameters.stops) {
             parameters.stops = parameters.stops.map(stop => {
                 return [
@@ -6287,7 +6287,7 @@ class StylePropertyFunction {
     constructor(parameters, specification) {
         this._parameters = parameters;
         this._specification = specification;
-        extend(this, createFunction(this._parameters, this._specification));
+        extend$1(this, createFunction(this._parameters, this._specification));
     }
     static deserialize(serialized) {
         return new StylePropertyFunction(serialized._parameters, serialized._specification);
@@ -6359,7 +6359,7 @@ function getExpectedType(spec) {
         resolvedImage: ResolvedImageType
     };
     if (spec.type === 'array') {
-        return array$1(types[spec.value] || ValueType, spec.length);
+        return array(types[spec.value] || ValueType, spec.length);
     }
     return types[spec.type];
 }
@@ -7047,7 +7047,7 @@ function convertNegation(filter) {
 function validateFilter(options) {
     if (isExpressionFilter(deepUnbundle(options.value))) {
         const layerType = deepUnbundle(options.layerType);
-        return validateExpression(extend({}, options, {
+        return validateExpression(extend$1({}, options, {
             expressionContext: 'filter',
             valueSpec: options.styleSpec[`filter_${ layerType || 'fill' }`]
         }));
@@ -7191,11 +7191,11 @@ function validateProperty(options, propertyType) {
     }));
 }
 
-function validatePaintProperty$1(options) {
+function validatePaintProperty(options) {
     return validateProperty(options, 'paint');
 }
 
-function validateLayoutProperty$1(options) {
+function validateLayoutProperty(options) {
     return validateProperty(options, 'layout');
 }
 
@@ -7286,7 +7286,7 @@ function validateLayer(options) {
                 });
             },
             filter(options) {
-                return validateFilter(extend({ layerType: type }, options));
+                return validateFilter(extend$1({ layerType: type }, options));
             },
             layout(options) {
                 return validateObject({
@@ -7297,7 +7297,7 @@ function validateLayer(options) {
                     styleSpec: options.styleSpec,
                     objectElementValidators: {
                         '*'(options) {
-                            return validateLayoutProperty$1(extend({ layerType: type }, options));
+                            return validateLayoutProperty(extend$1({ layerType: type }, options));
                         }
                     }
                 });
@@ -7311,7 +7311,7 @@ function validateLayer(options) {
                     styleSpec: options.styleSpec,
                     objectElementValidators: {
                         '*'(options) {
-                            return validatePaintProperty$1(extend({ layerType: type }, options));
+                            return validatePaintProperty(extend$1({ layerType: type }, options));
                         }
                     }
                 });
@@ -7443,7 +7443,7 @@ function validatePromoteId({key, value}) {
     }
 }
 
-function validateLight$1(options) {
+function validateLight(options) {
     const light = options.value;
     const styleSpec = options.styleSpec;
     const lightSpec = styleSpec.light;
@@ -7531,7 +7531,7 @@ function validateTerrain(options) {
     return errors;
 }
 
-function validateFog$1(options) {
+function validateFog(options) {
     const fog = options.value;
     const style = options.style;
     const styleSpec = options.styleSpec;
@@ -7621,9 +7621,9 @@ const VALIDATORS = {
     'layer': validateLayer,
     'object': validateObject,
     'source': validateSource,
-    'light': validateLight$1,
+    'light': validateLight,
     'terrain': validateTerrain,
-    'fog': validateFog$1,
+    'fog': validateFog,
     'string': validateString,
     'formatted': validateFormatted,
     'resolvedImage': validateImage,
@@ -7640,7 +7640,7 @@ function validate(options) {
     } else if (valueSpec.type && VALIDATORS[valueSpec.type]) {
         return VALIDATORS[valueSpec.type](options);
     } else {
-        const valid = validateObject(extend({}, options, { valueSpec: valueSpec.type ? styleSpec[valueSpec.type] : valueSpec }));
+        const valid = validateObject(extend$1({}, options, { valueSpec: valueSpec.type ? styleSpec[valueSpec.type] : valueSpec }));
         return valid;
     }
 }
@@ -7686,13 +7686,13 @@ function validateStyleMin(style, styleSpec = spec) {
     return sortErrors(errors);
 }
 validateStyleMin.source = wrapCleanErrors(validateSource);
-validateStyleMin.light = wrapCleanErrors(validateLight$1);
+validateStyleMin.light = wrapCleanErrors(validateLight);
 validateStyleMin.terrain = wrapCleanErrors(validateTerrain);
-validateStyleMin.fog = wrapCleanErrors(validateFog$1);
+validateStyleMin.fog = wrapCleanErrors(validateFog);
 validateStyleMin.layer = wrapCleanErrors(validateLayer);
 validateStyleMin.filter = wrapCleanErrors(validateFilter);
-validateStyleMin.paintProperty = wrapCleanErrors(validatePaintProperty$1);
-validateStyleMin.layoutProperty = wrapCleanErrors(validateLayoutProperty$1);
+validateStyleMin.paintProperty = wrapCleanErrors(validatePaintProperty);
+validateStyleMin.layoutProperty = wrapCleanErrors(validateLayoutProperty);
 function sortErrors(errors) {
     return [].concat(errors).sort((a, b) => {
         return a.line - b.line;
@@ -7705,10 +7705,10 @@ function wrapCleanErrors(inner) {
 }
 
 const validateStyle = validateStyleMin;
-const validateLight = validateStyle.light;
-const validateFog = validateStyle.fog;
-const validatePaintProperty = validateStyle.paintProperty;
-const validateLayoutProperty = validateStyle.layoutProperty;
+const validateLight$1 = validateStyle.light;
+const validateFog$1 = validateStyle.fog;
+const validatePaintProperty$1 = validateStyle.paintProperty;
+const validateLayoutProperty$1 = validateStyle.layoutProperty;
 function emitValidationErrors(emitter, errors) {
     let hasErrors = false;
     if (errors && errors.length) {
@@ -7853,7 +7853,7 @@ GridIndex.prototype.toArrayBuffer = function () {
     return array.buffer;
 };
 
-const {ImageData: ImageData$1, ImageBitmap: ImageBitmap$1} = window$1;
+const {ImageData, ImageBitmap} = window$1;
 const registry = {};
 function register(name, klass, options = {}) {
     Object.defineProperty(klass, '_classRegistryKey', {
@@ -7895,7 +7895,7 @@ function isArrayBuffer(val) {
     return val && typeof ArrayBuffer !== 'undefined' && (val instanceof ArrayBuffer || val.constructor && val.constructor.name === 'ArrayBuffer');
 }
 function isImageBitmap(val) {
-    return ImageBitmap$1 && val instanceof ImageBitmap$1;
+    return ImageBitmap && val instanceof ImageBitmap;
 }
 function serialize(input, transferables) {
     if (input === null || input === undefined || typeof input === 'boolean' || typeof input === 'number' || typeof input === 'string' || input instanceof Boolean || input instanceof Number || input instanceof String || input instanceof Date || input instanceof RegExp) {
@@ -7914,7 +7914,7 @@ function serialize(input, transferables) {
         }
         return view;
     }
-    if (input instanceof ImageData$1) {
+    if (input instanceof ImageData) {
         if (transferables) {
             transferables.push(input.data.buffer);
         }
@@ -7957,12 +7957,12 @@ function serialize(input, transferables) {
     }
     throw new Error(`can't serialize object of type ${ typeof input }`);
 }
-function deserialize$1(input) {
-    if (input === null || input === undefined || typeof input === 'boolean' || typeof input === 'number' || typeof input === 'string' || input instanceof Boolean || input instanceof Number || input instanceof String || input instanceof Date || input instanceof RegExp || isArrayBuffer(input) || isImageBitmap(input) || ArrayBuffer.isView(input) || input instanceof ImageData$1) {
+function deserialize(input) {
+    if (input === null || input === undefined || typeof input === 'boolean' || typeof input === 'number' || typeof input === 'string' || input instanceof Boolean || input instanceof Number || input instanceof String || input instanceof Date || input instanceof RegExp || isArrayBuffer(input) || isImageBitmap(input) || ArrayBuffer.isView(input) || input instanceof ImageData) {
         return input;
     }
     if (Array.isArray(input)) {
-        return input.map(deserialize$1);
+        return input.map(deserialize);
     }
     if (typeof input === 'object') {
         const name = input.$name || 'Object';
@@ -7978,7 +7978,7 @@ function deserialize$1(input) {
             if (key === '$name')
                 continue;
             const value = input[key];
-            result[key] = registry[name].shallow.indexOf(key) >= 0 ? value : deserialize$1(value);
+            result[key] = registry[name].shallow.indexOf(key) >= 0 ? value : deserialize(value);
         }
         return result;
     }
@@ -8351,7 +8351,7 @@ const setRTLTextPlugin = function (url, callback, deferred = false) {
     if (pluginStatus === status.deferred || pluginStatus === status.loading || pluginStatus === status.loaded) {
         throw new Error('setRTLTextPlugin cannot be called multiple times.');
     }
-    pluginURL = exported$1.resolveURL(url);
+    pluginURL = exported.resolveURL(url);
     pluginStatus = status.deferred;
     _completionCallback = callback;
     sendPluginStateToWorker();
@@ -8465,7 +8465,7 @@ class TransitionablePropertyValue {
         this.value = new PropertyValue(property, undefined);
     }
     transitioned(parameters, prior) {
-        return new TransitioningPropertyValue(this.property, this.value, prior, extend$1({}, parameters.transition, this.transition), parameters.now);
+        return new TransitioningPropertyValue(this.property, this.value, prior, extend({}, parameters.transition, this.transition), parameters.now);
     }
     untransitioned() {
         return new TransitioningPropertyValue(this.property, this.value, null, {}, 0);
@@ -8477,22 +8477,22 @@ class Transitionable {
         this._values = Object.create(properties.defaultTransitionablePropertyValues);
     }
     getValue(name) {
-        return clone$2(this._values[name].value.value);
+        return clone(this._values[name].value.value);
     }
     setValue(name, value) {
         if (!this._values.hasOwnProperty(name)) {
             this._values[name] = new TransitionablePropertyValue(this._values[name].property);
         }
-        this._values[name].value = new PropertyValue(this._values[name].property, value === null ? undefined : clone$2(value));
+        this._values[name].value = new PropertyValue(this._values[name].property, value === null ? undefined : clone(value));
     }
     getTransition(name) {
-        return clone$2(this._values[name].transition);
+        return clone(this._values[name].transition);
     }
     setTransition(name, value) {
         if (!this._values.hasOwnProperty(name)) {
             this._values[name] = new TransitionablePropertyValue(this._values[name].property);
         }
-        this._values[name].transition = clone$2(value) || undefined;
+        this._values[name].transition = clone(value) || undefined;
     }
     serialize() {
         const result = {};
@@ -8583,10 +8583,10 @@ class Layout {
         this._values = Object.create(properties.defaultPropertyValues);
     }
     getValue(name) {
-        return clone$2(this._values[name].value);
+        return clone(this._values[name].value);
     }
     setValue(name, value) {
-        this._values[name] = new PropertyValue(this._values[name].property, value === null ? undefined : clone$2(value));
+        this._values[name] = new PropertyValue(this._values[name].property, value === null ? undefined : clone(value));
     }
     serialize() {
         const result = {};
@@ -8895,7 +8895,7 @@ function createLayout(members, alignment = 1) {
     let maxSize = 0;
     const layoutMembers = members.map(member => {
         const typeSize = sizeOf(member.type);
-        const memberOffset = offset = align$1(offset, Math.max(alignment, typeSize));
+        const memberOffset = offset = align(offset, Math.max(alignment, typeSize));
         const components = member.components || 1;
         maxSize = Math.max(maxSize, typeSize);
         offset += typeSize * components;
@@ -8906,7 +8906,7 @@ function createLayout(members, alignment = 1) {
             offset: memberOffset
         };
     });
-    const size = align$1(offset, Math.max(maxSize, alignment));
+    const size = align(offset, Math.max(maxSize, alignment));
     return {
         members: layoutMembers,
         size,
@@ -8916,7 +8916,7 @@ function createLayout(members, alignment = 1) {
 function sizeOf(type) {
     return viewTypes[type].BYTES_PER_ELEMENT;
 }
-function align$1(offset, size) {
+function align(offset, size) {
     return Math.ceil(offset / size) * size;
 }
 
@@ -9952,10 +9952,10 @@ function sort(ids, positions, left, right) {
             while (ids[j] > pivot);
             if (i >= j)
                 break;
-            swap$1(ids, i, j);
-            swap$1(positions, 3 * i, 3 * j);
-            swap$1(positions, 3 * i + 1, 3 * j + 1);
-            swap$1(positions, 3 * i + 2, 3 * j + 2);
+            swap(ids, i, j);
+            swap(positions, 3 * i, 3 * j);
+            swap(positions, 3 * i + 1, 3 * j + 1);
+            swap(positions, 3 * i + 2, 3 * j + 2);
         }
         if (j - left < right - j) {
             sort(ids, positions, left, j);
@@ -9966,7 +9966,7 @@ function sort(ids, positions, left, right) {
         }
     }
 }
-function swap$1(arr, i, j) {
+function swap(arr, i, j) {
     const tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
@@ -10658,7 +10658,7 @@ class StyleLayer extends Evented {
     setLayoutProperty(name, value, options = {}) {
         if (value !== null && value !== undefined) {
             const key = `layers.${ this.id }.layout.${ name }`;
-            if (this._validate(validateLayoutProperty, key, name, value, options)) {
+            if (this._validate(validateLayoutProperty$1, key, name, value, options)) {
                 return;
             }
         }
@@ -10678,7 +10678,7 @@ class StyleLayer extends Evented {
     setPaintProperty(name, value, options = {}) {
         if (value !== null && value !== undefined) {
             const key = `layers.${ this.id }.paint.${ name }`;
-            if (this._validate(validatePaintProperty, key, name, value, options)) {
+            if (this._validate(validatePaintProperty$1, key, name, value, options)) {
                 return false;
             }
         }
@@ -10810,12 +10810,12 @@ class StyleLayer extends Evented {
     }
 }
 
-const layout$5 = createLayout([{
+const layout = createLayout([{
         name: 'a_pos',
         components: 2,
         type: 'Int16'
     }], 4);
-const {members: members$4, size: size$4, alignment: alignment$4} = layout$5;
+const {members, size, alignment} = layout;
 
 class SegmentVector {
     constructor(segments = []) {
@@ -10862,7 +10862,7 @@ class SegmentVector {
 SegmentVector.MAX_VERTEX_ARRAY_LENGTH = Math.pow(2, 16) - 1;
 register('SegmentVector', SegmentVector);
 
-var EXTENT = 8192;
+var EXTENT$1 = 8192;
 
 class LngLatBounds {
     constructor(sw, ne) {
@@ -11032,10 +11032,10 @@ const earthCircumference = 2 * Math.PI * earthRadius;
 function circumferenceAtLatitude(latitude) {
     return earthCircumference * Math.cos(latitude * Math.PI / 180);
 }
-function mercatorXfromLng(lng) {
+function mercatorXfromLng$1(lng) {
     return (180 + lng) / 360;
 }
-function mercatorYfromLat(lat) {
+function mercatorYfromLat$1(lat) {
     return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
 }
 function mercatorZfromAltitude(altitude, lat) {
@@ -11063,7 +11063,7 @@ class MercatorCoordinate {
     }
     static fromLngLat(lngLatLike, altitude = 0) {
         const lngLat = LngLat.convert(lngLatLike);
-        return new MercatorCoordinate(mercatorXfromLng(lngLat.lng), mercatorYfromLat(lngLat.lat), mercatorZfromAltitude(altitude, lngLat.lat));
+        return new MercatorCoordinate(mercatorXfromLng$1(lngLat.lng), mercatorYfromLat$1(lngLat.lat), mercatorZfromAltitude(altitude, lngLat.lat));
     }
     toLngLat() {
         return new LngLat(lngFromMercatorX(this.x), latFromMercatorY(this.y));
@@ -11094,7 +11094,7 @@ function addResampled(resampled, mx0, my0, mx2, my2, start, end, reproject, tole
         resampled.push(end);
     }
 }
-function resample$1(line, reproject, tolerance) {
+function resample(line, reproject, tolerance) {
     const resampled = [];
     let mx0, my0, prev;
     for (const point of line) {
@@ -11128,7 +11128,7 @@ function preparePoint(point, scale) {
 function loadGeometry(feature, canonical, tileTransform) {
     const geometry = feature.loadGeometry();
     const extent = feature.extent;
-    const extentScale = EXTENT / extent;
+    const extentScale = EXTENT$1 / extent;
     if (canonical && tileTransform && tileTransform.projection.name !== 'mercator') {
         const z2 = 1 << canonical.z;
         const {scale, x, y, projection} = tileTransform;
@@ -11141,7 +11141,7 @@ function loadGeometry(feature, canonical, tileTransform) {
         };
         for (let i = 0; i < geometry.length; i++) {
             if (feature.type !== 1) {
-                geometry[i] = resample$1(geometry[i], reproject, 1);
+                geometry[i] = resample(geometry[i], reproject, 1);
             } else {
                 const line = [];
                 for (const p of geometry[i]) {
@@ -11238,7 +11238,7 @@ class CircleBucket {
     }
     upload(context) {
         if (!this.uploaded) {
-            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members$4);
+            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members);
             this.indexBuffer = context.createIndexBuffer(this.indexArray);
         }
         this.programConfigurations.upload(context);
@@ -11257,7 +11257,7 @@ class CircleBucket {
             for (const point of ring) {
                 const x = point.x;
                 const y = point.y;
-                if (x < 0 || x >= EXTENT || y < 0 || y >= EXTENT)
+                if (x < 0 || x >= EXTENT$1 || y < 0 || y >= EXTENT$1)
                     continue;
                 const segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.indexArray, feature.sortKey);
                 const index = segment.vertexLength;
@@ -11456,7 +11456,7 @@ function getMaximumPaintValue(property, layer, bucket) {
 function translateDistance(translate) {
     return Math.sqrt(translate[0] * translate[0] + translate[1] * translate[1]);
 }
-function translate$1(queryGeometry, translate, translateAnchor, bearing, pixelsToTileUnits) {
+function translate(queryGeometry, translate, translateAnchor, bearing, pixelsToTileUnits) {
     if (!translate[0] && !translate[1]) {
         return queryGeometry;
     }
@@ -11479,8 +11479,8 @@ function tilespaceTranslate(translate, translateAnchor, bearing, pixelsToTileUni
     return pt;
 }
 
-const layout$4 = new Properties({ 'circle-sort-key': new DataDrivenProperty(spec['layout_circle']['circle-sort-key']) });
-const paint$9 = new Properties({
+const layout$1 = new Properties({ 'circle-sort-key': new DataDrivenProperty(spec['layout_circle']['circle-sort-key']) });
+const paint = new Properties({
     'circle-radius': new DataDrivenProperty(spec['paint_circle']['circle-radius']),
     'circle-color': new DataDrivenProperty(spec['paint_circle']['circle-color']),
     'circle-blur': new DataDrivenProperty(spec['paint_circle']['circle-blur']),
@@ -11493,9 +11493,9 @@ const paint$9 = new Properties({
     'circle-stroke-color': new DataDrivenProperty(spec['paint_circle']['circle-stroke-color']),
     'circle-stroke-opacity': new DataDrivenProperty(spec['paint_circle']['circle-stroke-opacity'])
 });
-var properties$9 = {
-    paint: paint$9,
-    layout: layout$4
+var properties = {
+    paint,
+    layout: layout$1
 };
 
 var EPSILON = 0.000001;
@@ -11509,7 +11509,7 @@ if (!Math.hypot)
         return Math.sqrt(y);
     };
 
-function create$5() {
+function create() {
     var out = new ARRAY_TYPE(9);
     if (ARRAY_TYPE != Float32Array) {
         out[1] = 0;
@@ -11550,7 +11550,7 @@ function fromRotation(out, rad) {
     return out;
 }
 
-function create$4() {
+function create$1() {
     var out = new ARRAY_TYPE(16);
     if (ARRAY_TYPE != Float32Array) {
         out[1] = 0;
@@ -11592,7 +11592,7 @@ function clone$1(a) {
     out[15] = a[15];
     return out;
 }
-function identity$1(out) {
+function identity(out) {
     out[0] = 1;
     out[1] = 0;
     out[2] = 0;
@@ -11651,7 +11651,7 @@ function invert(out, a) {
     out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
     return out;
 }
-function multiply$2(out, a, b) {
+function multiply(out, a, b) {
     var a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
     var a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
     var a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11];
@@ -11687,7 +11687,7 @@ function multiply$2(out, a, b) {
     out[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
     return out;
 }
-function translate(out, a, v) {
+function translate$1(out, a, v) {
     var x = v[0], y = v[1], z = v[2];
     var a00, a01, a02, a03;
     var a10, a11, a12, a13;
@@ -11729,7 +11729,7 @@ function translate(out, a, v) {
     }
     return out;
 }
-function scale$2(out, a, v) {
+function scale(out, a, v) {
     var x = v[0], y = v[1], z = v[2];
     out[0] = a[0] * x;
     out[1] = a[1] * x;
@@ -11749,7 +11749,7 @@ function scale$2(out, a, v) {
     out[15] = a[15];
     return out;
 }
-function rotateX$1(out, a, rad) {
+function rotateX(out, a, rad) {
     var s = Math.sin(rad);
     var c = Math.cos(rad);
     var a10 = a[4];
@@ -11780,7 +11780,7 @@ function rotateX$1(out, a, rad) {
     out[11] = a23 * c - a13 * s;
     return out;
 }
-function rotateY$1(out, a, rad) {
+function rotateY(out, a, rad) {
     var s = Math.sin(rad);
     var c = Math.cos(rad);
     var a00 = a[0];
@@ -11811,7 +11811,7 @@ function rotateY$1(out, a, rad) {
     out[11] = a03 * s + a23 * c;
     return out;
 }
-function rotateZ$1(out, a, rad) {
+function rotateZ(out, a, rad) {
     var s = Math.sin(rad);
     var c = Math.cos(rad);
     var a00 = a[0];
@@ -11941,9 +11941,9 @@ function ortho(out, left, right, bottom, top, near, far) {
     out[15] = 1;
     return out;
 }
-var mul$2 = multiply$2;
+var mul = multiply;
 
-function create$3() {
+function create$2() {
     var out = new ARRAY_TYPE(3);
     if (ARRAY_TYPE != Float32Array) {
         out[0] = 0;
@@ -11952,14 +11952,14 @@ function create$3() {
     }
     return out;
 }
-function clone(a) {
+function clone$2(a) {
     var out = new ARRAY_TYPE(3);
     out[0] = a[0];
     out[1] = a[1];
     out[2] = a[2];
     return out;
 }
-function length$2(a) {
+function length(a) {
     var x = a[0];
     var y = a[1];
     var z = a[2];
@@ -12014,7 +12014,7 @@ function scaleAndAdd(out, a, b, scale) {
     out[2] = a[2] + b[2] * scale;
     return out;
 }
-function normalize$2(out, a) {
+function normalize(out, a) {
     var x = a[0];
     var y = a[1];
     var z = a[2];
@@ -12027,7 +12027,7 @@ function normalize$2(out, a) {
     out[2] = a[2] * len;
     return out;
 }
-function dot$2(a, b) {
+function dot(a, b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 function cross(out, a, b) {
@@ -12038,7 +12038,7 @@ function cross(out, a, b) {
     out[2] = ax * by - ay * bx;
     return out;
 }
-function transformMat4$1(out, a, m) {
+function transformMat4(out, a, m) {
     var x = a[0], y = a[1], z = a[2];
     var w = m[3] * x + m[7] * y + m[11] * z + m[15];
     w = w || 1;
@@ -12071,15 +12071,15 @@ function transformQuat(out, a, q) {
     out[2] = z + uvz + uuvz;
     return out;
 }
-function exactEquals$3(a, b) {
+function exactEquals(a, b) {
     return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 var sub = subtract;
 var mul$1 = multiply$1;
 var div = divide;
-var len = length$2;
+var len = length;
 (function () {
-    var vec = create$3();
+    var vec = create$2();
     return function (a, stride, offset, count, fn, arg) {
         var i, l;
         if (!stride) {
@@ -12106,7 +12106,7 @@ var len = length$2;
     };
 })();
 
-function create$2() {
+function create$3() {
     var out = new ARRAY_TYPE(4);
     if (ARRAY_TYPE != Float32Array) {
         out[0] = 0;
@@ -12116,14 +12116,14 @@ function create$2() {
     }
     return out;
 }
-function multiply(out, a, b) {
+function multiply$2(out, a, b) {
     out[0] = a[0] * b[0];
     out[1] = a[1] * b[1];
     out[2] = a[2] * b[2];
     out[3] = a[3] * b[3];
     return out;
 }
-function scale(out, a, b) {
+function scale$2(out, a, b) {
     out[0] = a[0] * b;
     out[1] = a[1] * b;
     out[2] = a[2] * b;
@@ -12155,7 +12155,7 @@ function normalize$1(out, a) {
 function dot$1(a, b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
 }
-function transformMat4(out, a, m) {
+function transformMat4$1(out, a, m) {
     var x = a[0], y = a[1], z = a[2], w = a[3];
     out[0] = m[0] * x + m[4] * y + m[8] * z + m[12] * w;
     out[1] = m[1] * x + m[5] * y + m[9] * z + m[13] * w;
@@ -12163,12 +12163,12 @@ function transformMat4(out, a, m) {
     out[3] = m[3] * x + m[7] * y + m[11] * z + m[15] * w;
     return out;
 }
-function exactEquals$2(a, b) {
+function exactEquals$1(a, b) {
     return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
-var mul = multiply;
+var mul$2 = multiply$2;
 (function () {
-    var vec = create$2();
+    var vec = create$3();
     return function (a, stride, offset, count, fn, arg) {
         var i, l;
         if (!stride) {
@@ -12197,7 +12197,7 @@ var mul = multiply;
     };
 })();
 
-function create$1() {
+function create$4() {
     var out = new ARRAY_TYPE(4);
     if (ARRAY_TYPE != Float32Array) {
         out[0] = 0;
@@ -12207,7 +12207,7 @@ function create$1() {
     out[3] = 1;
     return out;
 }
-function identity(out) {
+function identity$1(out) {
     out[0] = 0;
     out[1] = 0;
     out[2] = 0;
@@ -12223,7 +12223,7 @@ function setAxisAngle(out, axis, rad) {
     out[3] = Math.cos(rad);
     return out;
 }
-function rotateX(out, a, rad) {
+function rotateX$1(out, a, rad) {
     rad *= 0.5;
     var ax = a[0], ay = a[1], az = a[2], aw = a[3];
     var bx = Math.sin(rad), bw = Math.cos(rad);
@@ -12233,7 +12233,7 @@ function rotateX(out, a, rad) {
     out[3] = aw * bw - ax * bx;
     return out;
 }
-function rotateY(out, a, rad) {
+function rotateY$1(out, a, rad) {
     rad *= 0.5;
     var ax = a[0], ay = a[1], az = a[2], aw = a[3];
     var by = Math.sin(rad), bw = Math.cos(rad);
@@ -12243,7 +12243,7 @@ function rotateY(out, a, rad) {
     out[3] = aw * bw - ay * by;
     return out;
 }
-function rotateZ(out, a, rad) {
+function rotateZ$1(out, a, rad) {
     rad *= 0.5;
     var ax = a[0], ay = a[1], az = a[2], aw = a[3];
     var bz = Math.sin(rad), bw = Math.cos(rad);
@@ -12314,23 +12314,23 @@ function fromMat3(out, m) {
     }
     return out;
 }
-var length = length$1;
-var normalize = normalize$1;
-var exactEquals$1 = exactEquals$2;
+var length$2 = length$1;
+var normalize$2 = normalize$1;
+var exactEquals$2 = exactEquals$1;
 (function () {
-    var tmpvec3 = create$3();
+    var tmpvec3 = create$2();
     var xUnitVec3 = fromValues(1, 0, 0);
     var yUnitVec3 = fromValues(0, 1, 0);
     return function (out, a, b) {
-        var dot = dot$2(a, b);
-        if (dot < -0.999999) {
+        var dot$1 = dot(a, b);
+        if (dot$1 < -0.999999) {
             cross(tmpvec3, xUnitVec3, a);
             if (len(tmpvec3) < 0.000001)
                 cross(tmpvec3, yUnitVec3, a);
-            normalize$2(tmpvec3, tmpvec3);
+            normalize(tmpvec3, tmpvec3);
             setAxisAngle(out, tmpvec3, Math.PI);
             return out;
-        } else if (dot > 0.999999) {
+        } else if (dot$1 > 0.999999) {
             out[0] = 0;
             out[1] = 0;
             out[2] = 0;
@@ -12341,14 +12341,14 @@ var exactEquals$1 = exactEquals$2;
             out[0] = tmpvec3[0];
             out[1] = tmpvec3[1];
             out[2] = tmpvec3[2];
-            out[3] = 1 + dot;
-            return normalize(out, out);
+            out[3] = 1 + dot$1;
+            return normalize$2(out, out);
         }
     };
 })();
 (function () {
-    var temp1 = create$1();
-    var temp2 = create$1();
+    var temp1 = create$4();
+    var temp2 = create$4();
     return function (out, a, b, c, d, t) {
         slerp(temp1, a, d, t);
         slerp(temp2, b, c, t);
@@ -12357,7 +12357,7 @@ var exactEquals$1 = exactEquals$2;
     };
 })();
 (function () {
-    var matr = create$5();
+    var matr = create();
     return function (out, view, right, up) {
         matr[0] = right[0];
         matr[3] = right[1];
@@ -12368,11 +12368,11 @@ var exactEquals$1 = exactEquals$2;
         matr[2] = -view[0];
         matr[5] = -view[1];
         matr[8] = -view[2];
-        return normalize(out, fromMat3(out, matr));
+        return normalize$2(out, fromMat3(out, matr));
     };
 })();
 
-function create() {
+function create$5() {
     var out = new ARRAY_TYPE(2);
     if (ARRAY_TYPE != Float32Array) {
         out[0] = 0;
@@ -12380,11 +12380,11 @@ function create() {
     }
     return out;
 }
-function exactEquals(a, b) {
+function exactEquals$3(a, b) {
     return a[0] === b[0] && a[1] === b[1];
 }
 (function () {
-    var vec = create();
+    var vec = create$5();
     return function (a, stride, offset, count, fn, arg) {
         var i, l;
         if (!stride) {
@@ -12411,7 +12411,7 @@ function exactEquals(a, b) {
 
 class CircleStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$9);
+        super(layer, properties);
     }
     createBucket(parameters) {
         return new CircleBucket(parameters);
@@ -12443,7 +12443,7 @@ function queryIntersectsCircle(queryGeometry, geometry, transform, pixelPosMatri
             const z = elevationHelper && transform.elevation ? transform.elevation.exaggeration() * elevationHelper.getElevationAt(translatedPoint.x, translatedPoint.y, true) : 0;
             const transformedPoint = alignWithMap ? translatedPoint : projectPoint(translatedPoint, z, pixelPosMatrix);
             const transformedPolygon = alignWithMap ? queryGeometry.tilespaceRays.map(r => intersectAtHeight(r, z)) : queryGeometry.queryGeometry.screenGeometry;
-            const projectedCenter = transformMat4([], [
+            const projectedCenter = transformMat4$1([], [
                 point.x,
                 point.y,
                 z,
@@ -12461,7 +12461,7 @@ function queryIntersectsCircle(queryGeometry, geometry, transform, pixelPosMatri
     return false;
 }
 function projectPoint(p, z, pixelPosMatrix) {
-    const point = transformMat4([], [
+    const point = transformMat4$1([], [
         p.x,
         p.y,
         z,
@@ -12472,7 +12472,7 @@ function projectPoint(p, z, pixelPosMatrix) {
 const origin = fromValues(0, 0, 0);
 const up = fromValues(0, 0, 1);
 function intersectAtHeight(r, z) {
-    const intersectionPt = create$3();
+    const intersectionPt = create$2();
     origin[2] = z;
     r.intersectsPlane(origin, up, intersectionPt);
     return new pointGeometry(intersectionPt[0], intersectionPt[1]);
@@ -12584,14 +12584,14 @@ class RGBAImage {
 register('AlphaImage', AlphaImage);
 register('RGBAImage', RGBAImage);
 
-const paint$8 = new Properties({
+const paint$1 = new Properties({
     'heatmap-radius': new DataDrivenProperty(spec['paint_heatmap']['heatmap-radius']),
     'heatmap-weight': new DataDrivenProperty(spec['paint_heatmap']['heatmap-weight']),
     'heatmap-intensity': new DataConstantProperty(spec['paint_heatmap']['heatmap-intensity']),
     'heatmap-color': new ColorRampProperty(spec['paint_heatmap']['heatmap-color']),
     'heatmap-opacity': new DataConstantProperty(spec['paint_heatmap']['heatmap-opacity'])
 });
-var properties$8 = { paint: paint$8 };
+var properties$1 = { paint: paint$1 };
 
 function renderColorRamp(params) {
     const evaluationGlobals = {};
@@ -12632,7 +12632,7 @@ class HeatmapStyleLayer extends StyleLayer {
         return new HeatmapBucket(parameters);
     }
     constructor(layer) {
-        super(layer, properties$8);
+        super(layer, properties$1);
         this._updateColorRamp();
     }
     _handleSpecialPaintPropertyUpdate(name) {
@@ -12676,7 +12676,7 @@ class HeatmapStyleLayer extends StyleLayer {
     }
 }
 
-const paint$7 = new Properties({
+const paint$2 = new Properties({
     'hillshade-illumination-direction': new DataConstantProperty(spec['paint_hillshade']['hillshade-illumination-direction']),
     'hillshade-illumination-anchor': new DataConstantProperty(spec['paint_hillshade']['hillshade-illumination-anchor']),
     'hillshade-exaggeration': new DataConstantProperty(spec['paint_hillshade']['hillshade-exaggeration']),
@@ -12684,11 +12684,11 @@ const paint$7 = new Properties({
     'hillshade-highlight-color': new DataConstantProperty(spec['paint_hillshade']['hillshade-highlight-color']),
     'hillshade-accent-color': new DataConstantProperty(spec['paint_hillshade']['hillshade-accent-color'])
 });
-var properties$7 = { paint: paint$7 };
+var properties$2 = { paint: paint$2 };
 
 class HillshadeStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$7);
+        super(layer, properties$2);
     }
     hasOffscreenPass() {
         return this.paint.get('hillshade-exaggeration') !== 0 && this.visibility !== 'none';
@@ -12704,15 +12704,15 @@ class HillshadeStyleLayer extends StyleLayer {
     }
 }
 
-const layout$3 = createLayout([{
+const layout$2 = createLayout([{
         name: 'a_pos',
         components: 2,
         type: 'Int16'
     }], 4);
-const {members: members$3, size: size$3, alignment: alignment$3} = layout$3;
+const {members: members$1, size: size$1, alignment: alignment$1} = layout$2;
 
 var earcut_1 = earcut;
-var _default$1 = earcut;
+var _default = earcut;
 function earcut(data, holeIndices, dim) {
     dim = dim || 2;
     var hasHoles = holeIndices && holeIndices.length, outerLen = hasHoles ? holeIndices[0] * dim : data.length, outerNode = linkedList(data, 0, outerLen, dim, true), triangles = [];
@@ -12744,7 +12744,7 @@ function earcut(data, holeIndices, dim) {
 }
 function linkedList(data, start, end, dim, clockwise) {
     var i, last;
-    if (clockwise === signedArea$1(data, start, end, dim) > 0) {
+    if (clockwise === signedArea(data, start, end, dim) > 0) {
         for (i = start; i < end; i += dim)
             last = insertNode(i, data[i], data[i + 1], last);
     } else {
@@ -12894,7 +12894,7 @@ function eliminateHoles(data, holeIndices, outerNode, dim) {
     }
     queue.sort(compareX);
     for (i = 0; i < queue.length; i++) {
-        eliminateHole(queue[i], outerNode);
+        outerNode = eliminateHole(queue[i], outerNode);
         outerNode = filterPoints(outerNode, outerNode.next);
     }
     return outerNode;
@@ -12903,12 +12903,14 @@ function compareX(a, b) {
     return a.x - b.x;
 }
 function eliminateHole(hole, outerNode) {
-    outerNode = findHoleBridge(hole, outerNode);
-    if (outerNode) {
-        var b = splitPolygon(outerNode, hole);
-        filterPoints(outerNode, outerNode.next);
-        filterPoints(b, b.next);
+    var bridge = findHoleBridge(hole, outerNode);
+    if (!bridge) {
+        return outerNode;
     }
+    var bridgeReverse = splitPolygon(bridge, hole);
+    var filteredBridge = filterPoints(bridge, bridge.next);
+    filterPoints(bridgeReverse, bridgeReverse.next);
+    return outerNode === bridge ? filteredBridge : outerNode;
 }
 function findHoleBridge(hole, outerNode) {
     var p = outerNode, hx = hole.x, hy = hole.y, qx = -Infinity, m;
@@ -13129,12 +13131,12 @@ function Node(i, x, y) {
 earcut.deviation = function (data, holeIndices, dim, triangles) {
     var hasHoles = holeIndices && holeIndices.length;
     var outerLen = hasHoles ? holeIndices[0] * dim : data.length;
-    var polygonArea = Math.abs(signedArea$1(data, 0, outerLen, dim));
+    var polygonArea = Math.abs(signedArea(data, 0, outerLen, dim));
     if (hasHoles) {
         for (var i = 0, len = holeIndices.length; i < len; i++) {
             var start = holeIndices[i] * dim;
             var end = i < len - 1 ? holeIndices[i + 1] * dim : data.length;
-            polygonArea -= Math.abs(signedArea$1(data, start, end, dim));
+            polygonArea -= Math.abs(signedArea(data, start, end, dim));
         }
     }
     var trianglesArea = 0;
@@ -13146,7 +13148,7 @@ earcut.deviation = function (data, holeIndices, dim, triangles) {
     }
     return polygonArea === 0 && trianglesArea === 0 ? 0 : Math.abs((trianglesArea - polygonArea) / polygonArea);
 };
-function signedArea$1(data, start, end, dim) {
+function signedArea(data, start, end, dim) {
     var sum = 0;
     for (var i = start, j = end - dim; i < end; i += dim) {
         sum += (data[j] - data[i]) * (data[i + 1] + data[j + 1]);
@@ -13172,10 +13174,10 @@ earcut.flatten = function (data) {
     }
     return result;
 };
-earcut_1.default = _default$1;
+earcut_1.default = _default;
 
 function quickselect(arr, k, left, right, compare) {
-    quickselectStep(arr, k, left || 0, right || arr.length - 1, compare || defaultCompare$1);
+    quickselectStep(arr, k, left || 0, right || arr.length - 1, compare || defaultCompare);
 }
 function quickselectStep(arr, k, left, right, compare) {
     while (right > left) {
@@ -13192,11 +13194,11 @@ function quickselectStep(arr, k, left, right, compare) {
         var t = arr[k];
         var i = left;
         var j = right;
-        swap(arr, left, k);
+        swap$1(arr, left, k);
         if (compare(arr[right], t) > 0)
-            swap(arr, left, right);
+            swap$1(arr, left, right);
         while (i < j) {
-            swap(arr, i, j);
+            swap$1(arr, i, j);
             i++;
             j--;
             while (compare(arr[i], t) < 0)
@@ -13205,10 +13207,10 @@ function quickselectStep(arr, k, left, right, compare) {
                 j--;
         }
         if (compare(arr[left], t) === 0)
-            swap(arr, left, j);
+            swap$1(arr, left, j);
         else {
             j++;
-            swap(arr, j, right);
+            swap$1(arr, j, right);
         }
         if (j <= k)
             left = j + 1;
@@ -13216,16 +13218,16 @@ function quickselectStep(arr, k, left, right, compare) {
             right = j - 1;
     }
 }
-function swap(arr, i, j) {
+function swap$1(arr, i, j) {
     var tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
 }
-function defaultCompare$1(a, b) {
+function defaultCompare(a, b) {
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function classifyRings$1(rings, maxRings) {
+function classifyRings(rings, maxRings) {
     const len = rings.length;
     if (len <= 1)
         return [rings];
@@ -13304,7 +13306,7 @@ function addPatternDependencies(type, layers, patternFeature, zoom, options) {
     return patternFeature;
 }
 
-const EARCUT_MAX_RINGS$1 = 500;
+const EARCUT_MAX_RINGS = 500;
 class FillBucket {
     constructor(options) {
         this.zoom = options.zoom;
@@ -13379,7 +13381,7 @@ class FillBucket {
     }
     upload(context) {
         if (!this.uploaded) {
-            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members$3);
+            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members$1);
             this.indexBuffer = context.createIndexBuffer(this.indexArray);
             this.indexBuffer2 = context.createIndexBuffer(this.indexArray2);
         }
@@ -13397,7 +13399,7 @@ class FillBucket {
         this.segments2.destroy();
     }
     addFeature(feature, geometry, index, canonical, imagePositions, availableImages = []) {
-        for (const polygon of classifyRings$1(geometry, EARCUT_MAX_RINGS$1)) {
+        for (const polygon of classifyRings(geometry, EARCUT_MAX_RINGS)) {
             let numVertices = 0;
             for (const ring of polygon) {
                 numVertices += ring.length;
@@ -13445,8 +13447,8 @@ register('FillBucket', FillBucket, {
     ]
 });
 
-const layout$2 = new Properties({ 'fill-sort-key': new DataDrivenProperty(spec['layout_fill']['fill-sort-key']) });
-const paint$6 = new Properties({
+const layout$3 = new Properties({ 'fill-sort-key': new DataDrivenProperty(spec['layout_fill']['fill-sort-key']) });
+const paint$3 = new Properties({
     'fill-antialias': new DataConstantProperty(spec['paint_fill']['fill-antialias']),
     'fill-opacity': new DataDrivenProperty(spec['paint_fill']['fill-opacity']),
     'fill-color': new DataDrivenProperty(spec['paint_fill']['fill-color']),
@@ -13455,14 +13457,14 @@ const paint$6 = new Properties({
     'fill-translate-anchor': new DataConstantProperty(spec['paint_fill']['fill-translate-anchor']),
     'fill-pattern': new CrossFadedDataDrivenProperty(spec['paint_fill']['fill-pattern'])
 });
-var properties$6 = {
-    paint: paint$6,
-    layout: layout$2
+var properties$3 = {
+    paint: paint$3,
+    layout: layout$3
 };
 
 class FillStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$6);
+        super(layer, properties$3);
     }
     getProgramIds() {
         const pattern = this.paint.get('fill-pattern');
@@ -13492,7 +13494,7 @@ class FillStyleLayer extends StyleLayer {
     queryIntersectsFeature(queryGeometry, feature, featureState, geometry, zoom, transform) {
         if (queryGeometry.queryGeometry.isAboveHorizon)
             return false;
-        const translatedPolygon = translate$1(queryGeometry.tilespaceGeometry, this.paint.get('fill-translate'), this.paint.get('fill-translate-anchor'), transform.angle, queryGeometry.pixelToTileUnitsFactor);
+        const translatedPolygon = translate(queryGeometry.tilespaceGeometry, this.paint.get('fill-translate'), this.paint.get('fill-translate-anchor'), transform.angle, queryGeometry.pixelToTileUnitsFactor);
         return polygonIntersectsMultiPolygon(translatedPolygon, geometry);
     }
     isTileClipped() {
@@ -13512,8 +13514,8 @@ const centroidAttributes = createLayout([{
     }]);
 const {members: members$2, size: size$2, alignment: alignment$2} = fillExtrusionAttributes;
 
-var vectortilefeature = VectorTileFeature$1;
-function VectorTileFeature$1(pbf, end, extent, keys, values) {
+var vectortilefeature = VectorTileFeature;
+function VectorTileFeature(pbf, end, extent, keys, values) {
     this.properties = {};
     this.extent = extent;
     this.type = 0;
@@ -13540,13 +13542,13 @@ function readTag(pbf, feature) {
         feature.properties[key] = value;
     }
 }
-VectorTileFeature$1.types = [
+VectorTileFeature.types = [
     'Unknown',
     'Point',
     'LineString',
     'Polygon'
 ];
-VectorTileFeature$1.prototype.loadGeometry = function () {
+VectorTileFeature.prototype.loadGeometry = function () {
     var pbf = this._pbf;
     pbf.pos = this._geometry;
     var end = pbf.readVarint() + pbf.pos, cmd = 1, length = 0, x = 0, y = 0, lines = [], line;
@@ -13578,7 +13580,7 @@ VectorTileFeature$1.prototype.loadGeometry = function () {
         lines.push(line);
     return lines;
 };
-VectorTileFeature$1.prototype.bbox = function () {
+VectorTileFeature.prototype.bbox = function () {
     var pbf = this._pbf;
     pbf.pos = this._geometry;
     var end = pbf.readVarint() + pbf.pos, cmd = 1, length = 0, x = 0, y = 0, x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
@@ -13611,8 +13613,8 @@ VectorTileFeature$1.prototype.bbox = function () {
         y2
     ];
 };
-VectorTileFeature$1.prototype.toGeoJSON = function (x, y, z) {
-    var size = this.extent * Math.pow(2, z), x0 = this.extent * x, y0 = this.extent * y, coords = this.loadGeometry(), type = VectorTileFeature$1.types[this.type], i, j;
+VectorTileFeature.prototype.toGeoJSON = function (x, y, z) {
+    var size = this.extent * Math.pow(2, z), x0 = this.extent * x, y0 = this.extent * y, coords = this.loadGeometry(), type = VectorTileFeature.types[this.type], i, j;
     function project(line) {
         for (var j = 0; j < line.length; j++) {
             var p = line[j], y2 = 180 - (p.y + y0) * 360 / size;
@@ -13637,7 +13639,7 @@ VectorTileFeature$1.prototype.toGeoJSON = function (x, y, z) {
         }
         break;
     case 3:
-        coords = classifyRings(coords);
+        coords = classifyRings$1(coords);
         for (i = 0; i < coords.length; i++) {
             for (j = 0; j < coords[i].length; j++) {
                 project(coords[i][j]);
@@ -13663,13 +13665,13 @@ VectorTileFeature$1.prototype.toGeoJSON = function (x, y, z) {
     }
     return result;
 };
-function classifyRings(rings) {
+function classifyRings$1(rings) {
     var len = rings.length;
     if (len <= 1)
         return [rings];
     var polygons = [], polygon, ccw;
     for (var i = 0; i < len; i++) {
-        var area = signedArea(rings[i]);
+        var area = signedArea$1(rings[i]);
         if (area === 0)
             continue;
         if (ccw === undefined)
@@ -13686,7 +13688,7 @@ function classifyRings(rings) {
         polygons.push(polygon);
     return polygons;
 }
-function signedArea(ring) {
+function signedArea$1(ring) {
     var sum = 0;
     for (var i = 0, len = ring.length, j = len - 1, p1, p2; i < len; j = i++) {
         p1 = ring[i];
@@ -13696,8 +13698,8 @@ function signedArea(ring) {
     return sum;
 }
 
-var vectortilelayer = VectorTileLayer$1;
-function VectorTileLayer$1(pbf, end) {
+var vectortilelayer = VectorTileLayer;
+function VectorTileLayer(pbf, end) {
     this.version = 1;
     this.name = null;
     this.extent = 4096;
@@ -13731,7 +13733,7 @@ function readValueMessage(pbf) {
     }
     return value;
 }
-VectorTileLayer$1.prototype.feature = function (i) {
+VectorTileLayer.prototype.feature = function (i) {
     if (i < 0 || i >= this._features.length)
         throw new Error('feature index out of bounds');
     this._pbf.pos = this._features[i];
@@ -13739,8 +13741,8 @@ VectorTileLayer$1.prototype.feature = function (i) {
     return new vectortilefeature(this._pbf, end, this.extent, this._keys, this._values);
 };
 
-var vectortile = VectorTile$1;
-function VectorTile$1(pbf, end) {
+var vectortile = VectorTile;
+function VectorTile(pbf, end) {
     this.layers = pbf.readFields(readTile, {}, end);
 }
 function readTile(tag, layers, pbf) {
@@ -13751,22 +13753,22 @@ function readTile(tag, layers, pbf) {
     }
 }
 
-var VectorTile = vectortile;
-var VectorTileFeature = vectortilefeature;
-var VectorTileLayer = vectortilelayer;
+var VectorTile$1 = vectortile;
+var VectorTileFeature$1 = vectortilefeature;
+var VectorTileLayer$1 = vectortilelayer;
 
 var vectorTile = {
-	VectorTile: VectorTile,
-	VectorTileFeature: VectorTileFeature,
-	VectorTileLayer: VectorTileLayer
+	VectorTile: VectorTile$1,
+	VectorTileFeature: VectorTileFeature$1,
+	VectorTileLayer: VectorTileLayer$1
 };
 
-const vectorTileFeatureTypes$2 = vectorTile.VectorTileFeature.types;
-const EARCUT_MAX_RINGS = 500;
+const vectorTileFeatureTypes = vectorTile.VectorTileFeature.types;
+const EARCUT_MAX_RINGS$1 = 500;
 const FACTOR = Math.pow(2, 13);
 const ELEVATION_SCALE = 7;
 const ELEVATION_OFFSET = 450;
-function addVertex$1(vertexArray, x, y, nxRatio, nySign, normalUp, top, e) {
+function addVertex(vertexArray, x, y, nxRatio, nySign, normalUp, top, e) {
     vertexArray.emplaceBack((x << 1) + top, (y << 1) + normalUp, (Math.floor(nxRatio * FACTOR) << 1) + nySign, Math.round(e));
 }
 class PartMetadata {
@@ -13804,7 +13806,7 @@ class PartMetadata {
             max.y = p.y;
             checkBorders = true;
         }
-        if (((p.x === 0 || p.x === EXTENT) && p.x === prev.x) !== ((p.y === 0 || p.y === EXTENT) && p.y === prev.y)) {
+        if (((p.x === 0 || p.x === EXTENT$1) && p.x === prev.x) !== ((p.y === 0 || p.y === EXTENT$1) && p.y === prev.y)) {
             this.processBorderOverlap(p, prev);
         }
         if (checkBorders)
@@ -13814,14 +13816,14 @@ class PartMetadata {
         if (prev.x < 0 !== p.x < 0) {
             this.addBorderIntersection(0, number(prev.y, p.y, (0 - prev.x) / (p.x - prev.x)));
         }
-        if (prev.x > EXTENT !== p.x > EXTENT) {
-            this.addBorderIntersection(1, number(prev.y, p.y, (EXTENT - prev.x) / (p.x - prev.x)));
+        if (prev.x > EXTENT$1 !== p.x > EXTENT$1) {
+            this.addBorderIntersection(1, number(prev.y, p.y, (EXTENT$1 - prev.x) / (p.x - prev.x)));
         }
         if (prev.y < 0 !== p.y < 0) {
             this.addBorderIntersection(2, number(prev.x, p.x, (0 - prev.y) / (p.y - prev.y)));
         }
-        if (prev.y > EXTENT !== p.y > EXTENT) {
-            this.addBorderIntersection(3, number(prev.x, p.x, (EXTENT - prev.y) / (p.y - prev.y)));
+        if (prev.y > EXTENT$1 !== p.y > EXTENT$1) {
+            this.addBorderIntersection(3, number(prev.x, p.x, (EXTENT$1 - prev.y) / (p.y - prev.y)));
         }
     }
     addBorderIntersection(index, i) {
@@ -13980,7 +13982,7 @@ class FillExtrusionBucket {
     }
     addFeature(feature, geometry, index, canonical, imagePositions, availableImages) {
         const metadata = this.enableTerrain ? new PartMetadata() : null;
-        for (const polygon of classifyRings$1(geometry, EARCUT_MAX_RINGS)) {
+        for (const polygon of classifyRings(geometry, EARCUT_MAX_RINGS$1)) {
             let numVertices = 0;
             let segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.indexArray);
             if (polygon.length === 0 || isEntirelyOutside(polygon[0])) {
@@ -14011,11 +14013,11 @@ class FillExtrusionBucket {
                             const dist = p2.dist(p1);
                             if (edgeDistance + dist > 32768)
                                 edgeDistance = 0;
-                            addVertex$1(this.layoutVertexArray, p1.x, p1.y, nxRatio, nySign, 0, 0, edgeDistance);
-                            addVertex$1(this.layoutVertexArray, p1.x, p1.y, nxRatio, nySign, 0, 1, edgeDistance);
+                            addVertex(this.layoutVertexArray, p1.x, p1.y, nxRatio, nySign, 0, 0, edgeDistance);
+                            addVertex(this.layoutVertexArray, p1.x, p1.y, nxRatio, nySign, 0, 1, edgeDistance);
                             edgeDistance += dist;
-                            addVertex$1(this.layoutVertexArray, p2.x, p2.y, nxRatio, nySign, 0, 0, edgeDistance);
-                            addVertex$1(this.layoutVertexArray, p2.x, p2.y, nxRatio, nySign, 0, 1, edgeDistance);
+                            addVertex(this.layoutVertexArray, p2.x, p2.y, nxRatio, nySign, 0, 0, edgeDistance);
+                            addVertex(this.layoutVertexArray, p2.x, p2.y, nxRatio, nySign, 0, 1, edgeDistance);
                             const bottomRight = segment.vertexLength;
                             this.indexArray.emplaceBack(bottomRight, bottomRight + 2, bottomRight + 1);
                             this.indexArray.emplaceBack(bottomRight + 1, bottomRight + 2, bottomRight + 3);
@@ -14028,7 +14030,7 @@ class FillExtrusionBucket {
             if (segment.vertexLength + numVertices > SegmentVector.MAX_VERTEX_ARRAY_LENGTH) {
                 segment = this.segments.prepareSegment(numVertices, this.layoutVertexArray, this.indexArray);
             }
-            if (vectorTileFeatureTypes$2[feature.type] !== 'Polygon')
+            if (vectorTileFeatureTypes[feature.type] !== 'Polygon')
                 continue;
             const flattened = [];
             const holeIndices = [];
@@ -14043,7 +14045,7 @@ class FillExtrusionBucket {
                 }
                 for (let i = 0; i < ring.length; i++) {
                     const p = ring[i];
-                    addVertex$1(this.layoutVertexArray, p.x, p.y, 0, 0, 1, 1, 0);
+                    addVertex(this.layoutVertexArray, p.x, p.y, 0, 0, 1, 1, 0);
                     flattened.push(p.x);
                     flattened.push(p.y);
                     if (metadata)
@@ -14115,19 +14117,19 @@ register('FillExtrusionBucket', FillExtrusionBucket, {
 });
 register('PartMetadata', PartMetadata);
 function isBoundaryEdge(p1, p2) {
-    return p1.x === p2.x && (p1.x < 0 || p1.x > EXTENT) || p1.y === p2.y && (p1.y < 0 || p1.y > EXTENT);
+    return p1.x === p2.x && (p1.x < 0 || p1.x > EXTENT$1) || p1.y === p2.y && (p1.y < 0 || p1.y > EXTENT$1);
 }
 function isEntirelyOutside(ring) {
-    return ring.every(p => p.x <= 0) || ring.every(p => p.x >= EXTENT) || ring.every(p => p.y <= 0) || ring.every(p => p.y >= EXTENT);
+    return ring.every(p => p.x <= 0) || ring.every(p => p.x >= EXTENT$1) || ring.every(p => p.y <= 0) || ring.every(p => p.y >= EXTENT$1);
 }
 function tileToMeter(canonical) {
     const circumferenceAtEquator = 40075017;
     const mercatorY = canonical.y / (1 << canonical.z);
     const exp = Math.exp(Math.PI * (1 - 2 * mercatorY));
-    return circumferenceAtEquator * 2 * exp / (exp * exp + 1) / EXTENT / (1 << canonical.z);
+    return circumferenceAtEquator * 2 * exp / (exp * exp + 1) / EXTENT$1 / (1 << canonical.z);
 }
 
-const paint$5 = new Properties({
+const paint$4 = new Properties({
     'fill-extrusion-opacity': new DataConstantProperty(spec['paint_fill-extrusion']['fill-extrusion-opacity']),
     'fill-extrusion-color': new DataDrivenProperty(spec['paint_fill-extrusion']['fill-extrusion-color']),
     'fill-extrusion-translate': new DataConstantProperty(spec['paint_fill-extrusion']['fill-extrusion-translate']),
@@ -14137,11 +14139,11 @@ const paint$5 = new Properties({
     'fill-extrusion-base': new DataDrivenProperty(spec['paint_fill-extrusion']['fill-extrusion-base']),
     'fill-extrusion-vertical-gradient': new DataConstantProperty(spec['paint_fill-extrusion']['fill-extrusion-vertical-gradient'])
 });
-var properties$5 = { paint: paint$5 };
+var properties$4 = { paint: paint$4 };
 
 class FillExtrusionStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$5);
+        super(layer, properties$4);
     }
     createBucket(parameters) {
         return new FillExtrusionBucket(parameters);
@@ -14191,7 +14193,7 @@ class FillExtrusionStyleLayer extends StyleLayer {
         return checkIntersection(projectedBase, projectedTop, projectedQueryGeometry);
     }
 }
-function dot(a, b) {
+function dot$2(a, b) {
     return a.x * b.x + a.y * b.y;
 }
 function getIntersectionDistance(projectedQueryGeometry, projectedFace) {
@@ -14210,11 +14212,11 @@ function getIntersectionDistance(projectedQueryGeometry, projectedFace) {
             const ab = b.sub(a);
             const ac = c.sub(a);
             const ap = p.sub(a);
-            const dotABAB = dot(ab, ab);
-            const dotABAC = dot(ab, ac);
-            const dotACAC = dot(ac, ac);
-            const dotAPAB = dot(ap, ab);
-            const dotAPAC = dot(ap, ac);
+            const dotABAB = dot$2(ab, ab);
+            const dotABAC = dot$2(ab, ac);
+            const dotACAC = dot$2(ac, ac);
+            const dotAPAB = dot$2(ap, ab);
+            const dotAPAC = dot$2(ap, ac);
             const denom = dotABAB * dotACAC - dotABAC * dotABAC;
             const v = (dotACAC * dotAPAB - dotABAC * dotAPAC) / denom;
             const w = (dotABAB * dotAPAC - dotABAC * dotAPAB) / denom;
@@ -14330,7 +14332,7 @@ function projectExtrusion3D(geometry, zBase, zTop, translation, m, demSampler, c
             v[1] = y;
             v[2] = heightOffset.base;
             v[3] = 1;
-            transformMat4(v, v, m);
+            transformMat4$1(v, v, m);
             v[3] = Math.max(v[3], 0.00001);
             const base = toPoint([
                 v[0] / v[3],
@@ -14341,7 +14343,7 @@ function projectExtrusion3D(geometry, zBase, zTop, translation, m, demSampler, c
             v[1] = y;
             v[2] = heightOffset.top;
             v[3] = 1;
-            transformMat4(v, v, m);
+            transformMat4$1(v, v, m);
             v[3] = Math.max(v[3], 0.00001);
             const top = toPoint([
                 v[0] / v[3],
@@ -14425,14 +14427,14 @@ const lineLayoutAttributes = createLayout([
         type: 'Float32'
     }
 ], 4);
-const {members: members$1, size: size$1, alignment: alignment$1} = lineLayoutAttributes;
+const {members: members$3, size: size$3, alignment: alignment$3} = lineLayoutAttributes;
 
 const lineLayoutAttributesExt = createLayout([{
         name: 'a_packed',
         components: 3,
         type: 'Float32'
     }]);
-const {members, size, alignment} = lineLayoutAttributesExt;
+const {members: members$4, size: size$4, alignment: alignment$4} = lineLayoutAttributesExt;
 
 const vectorTileFeatureTypes$1 = vectorTile.VectorTileFeature.types;
 const EXTRUDE_SCALE = 63;
@@ -14584,9 +14586,9 @@ class LineBucket {
     upload(context) {
         if (!this.uploaded) {
             if (this.layoutVertexArray2.length !== 0) {
-                this.layoutVertexBuffer2 = context.createVertexBuffer(this.layoutVertexArray2, members);
+                this.layoutVertexBuffer2 = context.createVertexBuffer(this.layoutVertexArray2, members$4);
             }
-            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members$1);
+            this.layoutVertexBuffer = context.createVertexBuffer(this.layoutVertexArray, members$3);
             this.indexBuffer = context.createIndexBuffer(this.indexArray);
         }
         this.programConfigurations.upload(context);
@@ -14648,7 +14650,7 @@ class LineBucket {
             return;
         if (join === 'bevel')
             miterLimit = 1.05;
-        const sharpCornerOffset = this.overscaling <= 16 ? SHARP_CORNER_OFFSET * EXTENT / (512 * this.overscaling) : 0;
+        const sharpCornerOffset = this.overscaling <= 16 ? SHARP_CORNER_OFFSET * EXTENT$1 / (512 * this.overscaling) : 0;
         const segment = this.segments.prepareSegment(len * 10, this.layoutVertexArray, this.indexArray);
         let currentVertex;
         let prevVertex = undefined;
@@ -14824,14 +14826,14 @@ register('LineBucket', LineBucket, {
     ]
 });
 
-const layout$1 = new Properties({
+const layout$4 = new Properties({
     'line-cap': new DataDrivenProperty(spec['layout_line']['line-cap']),
     'line-join': new DataDrivenProperty(spec['layout_line']['line-join']),
     'line-miter-limit': new DataConstantProperty(spec['layout_line']['line-miter-limit']),
     'line-round-limit': new DataConstantProperty(spec['layout_line']['line-round-limit']),
     'line-sort-key': new DataDrivenProperty(spec['layout_line']['line-sort-key'])
 });
-const paint$4 = new Properties({
+const paint$5 = new Properties({
     'line-opacity': new DataDrivenProperty(spec['paint_line']['line-opacity']),
     'line-color': new DataDrivenProperty(spec['paint_line']['line-color']),
     'line-translate': new DataConstantProperty(spec['paint_line']['line-translate']),
@@ -14844,9 +14846,9 @@ const paint$4 = new Properties({
     'line-pattern': new CrossFadedDataDrivenProperty(spec['paint_line']['line-pattern']),
     'line-gradient': new ColorRampProperty(spec['paint_line']['line-gradient'])
 });
-var properties$4 = {
-    paint: paint$4,
-    layout: layout$1
+var properties$5 = {
+    paint: paint$5,
+    layout: layout$4
 };
 
 class LineFloorwidthProperty extends DataDrivenProperty {
@@ -14860,15 +14862,15 @@ class LineFloorwidthProperty extends DataDrivenProperty {
         return super.possiblyEvaluate(value, parameters);
     }
     evaluate(value, globals, feature, featureState) {
-        globals = extend$1({}, globals, { zoom: Math.floor(globals.zoom) });
+        globals = extend({}, globals, { zoom: Math.floor(globals.zoom) });
         return super.evaluate(value, globals, feature, featureState);
     }
 }
-const lineFloorwidthProperty = new LineFloorwidthProperty(properties$4.paint.properties['line-width'].specification);
+const lineFloorwidthProperty = new LineFloorwidthProperty(properties$5.paint.properties['line-width'].specification);
 lineFloorwidthProperty.useIntegerZoom = true;
 class LineStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$4);
+        super(layer, properties$5);
         this.gradientVersion = 0;
     }
     _handleSpecialPaintPropertyUpdate(name) {
@@ -14906,7 +14908,7 @@ class LineStyleLayer extends StyleLayer {
     queryIntersectsFeature(queryGeometry, feature, featureState, geometry, zoom, transform) {
         if (queryGeometry.queryGeometry.isAboveHorizon)
             return false;
-        const translatedPolygon = translate$1(queryGeometry.tilespaceGeometry, this.paint.get('line-translate'), this.paint.get('line-translate-anchor'), transform.angle, queryGeometry.pixelToTileUnitsFactor);
+        const translatedPolygon = translate(queryGeometry.tilespaceGeometry, this.paint.get('line-translate'), this.paint.get('line-translate-anchor'), transform.angle, queryGeometry.pixelToTileUnitsFactor);
         const halfWidth = queryGeometry.pixelToTileUnitsFactor / 2 * getLineWidth(this.paint.get('line-width').evaluate(feature, featureState), this.paint.get('line-gap-width').evaluate(feature, featureState));
         const lineOffset = this.paint.get('line-offset').evaluate(feature, featureState);
         if (lineOffset) {
@@ -16313,7 +16315,7 @@ function writeUtf8(buf, str, pos) {
     return pos;
 }
 
-const border$1 = 3;
+const border = 3;
 function readFontstacks(tag, glyphData, pbf) {
     glyphData.glyphs = [];
     if (tag === 1) {
@@ -16326,8 +16328,8 @@ function readFontstack(tag, glyphData, pbf) {
         glyphData.glyphs.push({
             id,
             bitmap: new AlphaImage({
-                width: width + 2 * border$1,
-                height: height + 2 * border$1
+                width: width + 2 * border,
+                height: height + 2 * border
             }, bitmap),
             metrics: {
                 width,
@@ -16362,7 +16364,7 @@ function readGlyph(tag, glyph, pbf) {
 function parseGlyphPBF (data) {
     return new pbf(data).readFields(readFontstacks, {});
 }
-const GLYPH_PBF_BORDER = border$1;
+const GLYPH_PBF_BORDER = border;
 
 function potpack(boxes) {
 
@@ -17106,7 +17108,7 @@ function shapeLines(shaping, glyphMap, glyphPositions, imagePositions, lines, li
     }
     const height = y;
     const {horizontalAlign, verticalAlign} = getAnchorAlignment(textAnchor);
-    align(shaping.positionedLines, justify, horizontalAlign, verticalAlign, maxLineLength, height);
+    align$1(shaping.positionedLines, justify, horizontalAlign, verticalAlign, maxLineLength, height);
     shaping.top += -verticalAlign * height;
     shaping.bottom = shaping.top + height;
     shaping.left += -horizontalAlign * maxLineLength;
@@ -17126,7 +17128,7 @@ function justifyLine(positionedGlyphs, justify, lineOffset, baselineOffset, half
         positionedGlyphs[j].y += lineOffset + baselineOffset + halfLineHeight;
     }
 }
-function align(positionedLines, justify, horizontalAlign, verticalAlign, maxLineLength, blockHeight) {
+function align$1(positionedLines, justify, horizontalAlign, verticalAlign, maxLineLength, blockHeight) {
     const shiftX = (justify - horizontalAlign) * maxLineLength;
     const shiftY = -blockHeight * verticalAlign;
     for (const line of positionedLines) {
@@ -17293,9 +17295,9 @@ function getAnchors(line, spacing, maxAngle, shapedText, shapedIcon, glyphSize, 
     }
     const fixedExtraOffset = glyphSize * 2;
     const offset = !isLineContinued ? (shapedLabelLength / 2 + fixedExtraOffset) * boxScale * overscaling % spacing : spacing / 2 * overscaling % spacing;
-    return resample(line, offset, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, false, tileExtent);
+    return resample$1(line, offset, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, false, tileExtent);
 }
-function resample(line, offset, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, placeAtMiddle, tileExtent) {
+function resample$1(line, offset, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, placeAtMiddle, tileExtent) {
     const halfLabelLength = labelLength / 2;
     const lineLength = getLineLength(line);
     let distance = 0, markedDistance = offset - spacing;
@@ -17317,7 +17319,7 @@ function resample(line, offset, spacing, angleWindowSize, maxAngle, labelLength,
         distance += segmentDist;
     }
     if (!placeAtMiddle && !anchors.length && !isLineContinued) {
-        anchors = resample(line, distance / 2, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, true, tileExtent);
+        anchors = resample$1(line, distance / 2, spacing, angleWindowSize, maxAngle, labelLength, isLineContinued, true, tileExtent);
     }
     return anchors;
 }
@@ -17390,146 +17392,120 @@ function loadGlyphRange (fontstack, range, urlTemplate, requestManager, callback
     });
 }
 
-var tinySdf = TinySDF;
-var _default = TinySDF;
-var INF = 100000000000000000000;
-function TinySDF(fontSize, buffer, radius, cutoff, fontFamily, fontWeight) {
-    this.fontSize = fontSize || 24;
-    this.buffer = buffer === undefined ? 3 : buffer;
-    this.cutoff = cutoff || 0.25;
-    this.fontFamily = fontFamily || 'sans-serif';
-    this.fontWeight = fontWeight || 'normal';
-    this.radius = radius || 8;
-    var size = this.size = this.fontSize + this.buffer * 2;
-    var gridSize = size + this.buffer * 2;
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = this.canvas.height = size;
-    this.ctx = this.canvas.getContext('2d');
-    this.ctx.font = this.fontWeight + ' ' + this.fontSize + 'px ' + this.fontFamily;
-    this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = 'black';
-    this.gridOuter = new Float64Array(gridSize * gridSize);
-    this.gridInner = new Float64Array(gridSize * gridSize);
-    this.f = new Float64Array(gridSize);
-    this.z = new Float64Array(gridSize + 1);
-    this.v = new Uint16Array(gridSize);
-    this.useMetrics = this.ctx.measureText('A').actualBoundingBoxLeft !== undefined;
-    this.middle = Math.round(size / 2 * (navigator.userAgent.indexOf('Gecko/') >= 0 ? 1.2 : 1));
-}
-function prepareGrids(imgData, width, height, glyphWidth, glyphHeight, gridOuter, gridInner) {
-    gridOuter.fill(INF, 0, width * height);
-    gridInner.fill(0, 0, width * height);
-    var offset = (width - glyphWidth) / 2;
-    for (var y = 0; y < glyphHeight; y++) {
-        for (var x = 0; x < glyphWidth; x++) {
-            var j = (y + offset) * width + x + offset;
-            var a = imgData.data[4 * (y * glyphWidth + x) + 3] / 255;
-            if (a === 1) {
-                gridOuter[j] = 0;
-                gridInner[j] = INF;
-            } else if (a === 0) {
-                gridOuter[j] = INF;
-                gridInner[j] = 0;
-            } else {
-                var b = Math.max(0, 0.5 - a);
-                var c = Math.max(0, a - 0.5);
-                gridOuter[j] = b * b;
-                gridInner[j] = c * c;
+const INF = 100000000000000000000;
+class TinySDF {
+    constructor({fontSize = 24, buffer = 3, radius = 8, cutoff = 0.25, fontFamily = 'sans-serif', fontWeight = 'normal', fontStyle = 'normal'}) {
+        this.buffer = buffer;
+        this.cutoff = cutoff;
+        this.radius = radius;
+        const size = this.size = fontSize + buffer * 4;
+        const canvas = this._createCanvas(size);
+        const ctx = this.ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.font = `${ fontStyle } ${ fontWeight } ${ fontSize }px ${ fontFamily }`;
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = 'black';
+        this.gridOuter = new Float64Array(size * size);
+        this.gridInner = new Float64Array(size * size);
+        this.f = new Float64Array(size);
+        this.z = new Float64Array(size + 1);
+        this.v = new Uint16Array(size);
+    }
+    _createCanvas(size) {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        return canvas;
+    }
+    draw(char) {
+        const {
+            width: glyphAdvance,
+            actualBoundingBoxAscent,
+            actualBoundingBoxDescent,
+            actualBoundingBoxLeft,
+            actualBoundingBoxRight
+        } = this.ctx.measureText(char);
+        const glyphTop = Math.floor(actualBoundingBoxAscent);
+        const glyphLeft = 0;
+        const glyphWidth = Math.min(this.size - this.buffer, Math.ceil(actualBoundingBoxRight - actualBoundingBoxLeft));
+        const glyphHeight = Math.min(this.size - this.buffer, Math.ceil(actualBoundingBoxAscent) + Math.ceil(actualBoundingBoxDescent));
+        const width = glyphWidth + 2 * this.buffer;
+        const height = glyphHeight + 2 * this.buffer;
+        const len = width * height;
+        const data = new Uint8ClampedArray(len);
+        const glyph = {
+            data,
+            width,
+            height,
+            glyphWidth,
+            glyphHeight,
+            glyphTop,
+            glyphLeft,
+            glyphAdvance
+        };
+        if (glyphWidth === 0 || glyphHeight === 0)
+            return glyph;
+        const {ctx, buffer, gridInner, gridOuter} = this;
+        ctx.clearRect(buffer, buffer, glyphWidth, glyphHeight);
+        ctx.fillText(char, buffer, buffer + glyphTop + 1);
+        const imgData = ctx.getImageData(buffer, buffer, glyphWidth, glyphHeight);
+        gridOuter.fill(INF, 0, len);
+        gridInner.fill(0, 0, len);
+        for (let y = 0; y < glyphHeight; y++) {
+            for (let x = 0; x < glyphWidth; x++) {
+                const a = imgData.data[4 * (y * glyphWidth + x) + 3] / 255;
+                if (a === 0)
+                    continue;
+                const j = (y + buffer) * width + x + buffer;
+                if (a === 1) {
+                    gridOuter[j] = 0;
+                    gridInner[j] = INF;
+                } else {
+                    const d = 0.5 - a;
+                    gridOuter[j] = d > 0 ? d * d : 0;
+                    gridInner[j] = d < 0 ? d * d : 0;
+                }
             }
         }
-    }
-}
-function extractAlpha(alphaChannel, width, height, gridOuter, gridInner, radius, cutoff) {
-    for (var i = 0; i < width * height; i++) {
-        var d = Math.sqrt(gridOuter[i]) - Math.sqrt(gridInner[i]);
-        alphaChannel[i] = Math.round(255 - 255 * (d / radius + cutoff));
-    }
-}
-TinySDF.prototype._draw = function (char, getMetrics) {
-    var textMetrics = this.ctx.measureText(char);
-    var advance = textMetrics.width;
-    var doubleBuffer = 2 * this.buffer;
-    var width, glyphWidth, height, glyphHeight, top;
-    var imgTop, imgLeft, baselinePosition;
-    if (getMetrics && this.useMetrics) {
-        top = Math.floor(textMetrics.actualBoundingBoxAscent);
-        baselinePosition = this.buffer + Math.ceil(textMetrics.actualBoundingBoxAscent);
-        imgTop = this.buffer;
-        imgLeft = this.buffer;
-        glyphWidth = Math.min(this.size, Math.ceil(textMetrics.actualBoundingBoxRight - textMetrics.actualBoundingBoxLeft));
-        glyphHeight = Math.min(this.size - imgTop, Math.ceil(textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent));
-        width = glyphWidth + doubleBuffer;
-        height = glyphHeight + doubleBuffer;
-        this.ctx.textBaseline = 'alphabetic';
-    } else {
-        width = glyphWidth = this.size;
-        height = glyphHeight = this.size;
-        top = 19 * this.fontSize / 24;
-        imgTop = imgLeft = 0;
-        baselinePosition = this.middle;
-        this.ctx.textBaseline = 'middle';
-    }
-    var imgData;
-    if (glyphWidth && glyphHeight) {
-        this.ctx.clearRect(imgLeft, imgTop, glyphWidth, glyphHeight);
-        this.ctx.fillText(char, this.buffer, baselinePosition);
-        imgData = this.ctx.getImageData(imgLeft, imgTop, glyphWidth, glyphHeight);
-    }
-    var alphaChannel = new Uint8ClampedArray(width * height);
-    prepareGrids(imgData, width, height, glyphWidth, glyphHeight, this.gridOuter, this.gridInner);
-    edt(this.gridOuter, width, height, this.f, this.v, this.z);
-    edt(this.gridInner, width, height, this.f, this.v, this.z);
-    extractAlpha(alphaChannel, width, height, this.gridOuter, this.gridInner, this.radius, this.cutoff);
-    return {
-        data: alphaChannel,
-        metrics: {
-            width: glyphWidth,
-            height: glyphHeight,
-            sdfWidth: width,
-            sdfHeight: height,
-            top: top,
-            left: 0,
-            advance: advance
+        edt(gridOuter, 0, 0, width, height, width, this.f, this.v, this.z);
+        edt(gridInner, buffer, buffer, glyphWidth, glyphHeight, width, this.f, this.v, this.z);
+        for (let i = 0; i < len; i++) {
+            const d = Math.sqrt(gridOuter[i]) - Math.sqrt(gridInner[i]);
+            data[i] = Math.round(255 - 255 * (d / this.radius + this.cutoff));
         }
-    };
-};
-TinySDF.prototype.draw = function (char) {
-    return this._draw(char, false).data;
-};
-TinySDF.prototype.drawWithMetrics = function (char) {
-    return this._draw(char, true);
-};
-function edt(data, width, height, f, v, z) {
-    for (var x = 0; x < width; x++)
-        edt1d(data, x, width, height, f, v, z);
-    for (var y = 0; y < height; y++)
-        edt1d(data, y * width, 1, width, f, v, z);
+        return glyph;
+    }
+}
+function edt(data, x0, y0, width, height, gridSize, f, v, z) {
+    for (let x = x0; x < x0 + width; x++)
+        edt1d(data, y0 * gridSize + x, gridSize, height, f, v, z);
+    for (let y = y0; y < y0 + height; y++)
+        edt1d(data, y * gridSize + x0, 1, width, f, v, z);
 }
 function edt1d(grid, offset, stride, length, f, v, z) {
-    var q, k, s, r;
     v[0] = 0;
     z[0] = -INF;
     z[1] = INF;
-    for (q = 0; q < length; q++)
+    f[0] = grid[offset];
+    for (let q = 1, k = 0, s = 0; q < length; q++) {
         f[q] = grid[offset + q * stride];
-    for (q = 1, k = 0, s = 0; q < length; q++) {
+        const q2 = q * q;
         do {
-            r = v[k];
-            s = (f[q] - f[r] + q * q - r * r) / (q - r) / 2;
+            const r = v[k];
+            s = (f[q] - f[r] + q2 - r * r) / (q - r) / 2;
         } while (s <= z[k] && --k > -1);
         k++;
         v[k] = q;
         z[k] = s;
         z[k + 1] = INF;
     }
-    for (q = 0, k = 0; q < length; q++) {
+    for (let q = 0, k = 0; q < length; q++) {
         while (z[k + 1] < q)
             k++;
-        r = v[k];
-        grid[offset + q * stride] = f[r] + (q - r) * (q - r);
+        const r = v[k];
+        const qr = q - r;
+        grid[offset + q * stride] = f[r] + qr * qr;
     }
 }
-tinySdf.default = _default;
 
 const SDF_SCALE = 2;
 const LocalGlyphMode = {
@@ -17719,15 +17695,15 @@ class GlyphManager {
     }
 }
 GlyphManager.loadGlyphRange = loadGlyphRange;
-GlyphManager.TinySDF = tinySdf;
+GlyphManager.TinySDF = TinySDF;
 
-const border = IMAGE_PADDING;
+const border$1 = IMAGE_PADDING;
 function getIconQuads(shapedIcon, iconRotate, isSDFIcon, hasIconTextFit) {
     const quads = [];
     const image = shapedIcon.image;
     const pixelRatio = image.pixelRatio;
-    const imageWidth = image.paddedRect.w - 2 * border;
-    const imageHeight = image.paddedRect.h - 2 * border;
+    const imageWidth = image.paddedRect.w - 2 * border$1;
+    const imageHeight = image.paddedRect.h - 2 * border$1;
     const iconWidth = shapedIcon.right - shapedIcon.left;
     const iconHeight = shapedIcon.bottom - shapedIcon.top;
     const stretchX = image.stretchX || [[
@@ -17795,8 +17771,8 @@ function getIconQuads(shapedIcon, iconRotate, isSDFIcon, hasIconTextFit) {
         const y1 = top.stretch + top.fixed;
         const y2 = bottom.stretch + bottom.fixed;
         const subRect = {
-            x: image.paddedRect.x + border + x1,
-            y: image.paddedRect.y + border + y1,
+            x: image.paddedRect.x + border$1 + x1,
+            y: image.paddedRect.y + border$1 + y1,
             w: x2 - x1,
             h: y2 - y1
         };
@@ -17859,7 +17835,7 @@ function sumWithinRange(ranges, min, max) {
 }
 function stretchZonesToCuts(stretchZones, fixedSize, stretchSize) {
     const cuts = [{
-            fixed: -border,
+            fixed: -border$1,
             stretch: 0
         }];
     for (const [c1, c2] of stretchZones) {
@@ -17874,7 +17850,7 @@ function stretchZonesToCuts(stretchZones, fixedSize, stretchSize) {
         });
     }
     cuts.push({
-        fixed: fixedSize + border,
+        fixed: fixedSize + border$1,
         stretch: stretchSize
     });
     return cuts;
@@ -18075,7 +18051,7 @@ function getGlyphQuads(anchor, shaping, textOffset, layer, alongLine, feature, i
 }
 
 class TinyQueue {
-    constructor(data = [], compare = defaultCompare) {
+    constructor(data = [], compare = defaultCompare$1) {
         this.data = data;
         this.length = this.data.length;
         this.compare = compare;
@@ -18137,7 +18113,7 @@ class TinyQueue {
         data[pos] = item;
     }
 }
-function defaultCompare(a, b) {
+function defaultCompare$1(a, b) {
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -18315,7 +18291,7 @@ function evaluateVariableOffset(anchor, offset) {
 function performSymbolLayout(bucket, glyphMap, glyphPositions, imageMap, imagePositions, showCollisionBoxes, availableImages, canonical, tileZoom) {
     bucket.createArrays();
     const tileSize = 512 * bucket.overscaling;
-    bucket.tilePixelRatio = EXTENT / tileSize;
+    bucket.tilePixelRatio = EXTENT$1 / tileSize;
     bucket.compareText = {};
     bucket.iconsNeedLinear = false;
     const layout = bucket.layers[0].layout;
@@ -18475,14 +18451,14 @@ function addFeature(bucket, feature, shapedTextOrientations, shapedIcon, imageMa
         }
     }
     const addSymbolAtAnchor = (line, anchor) => {
-        if (anchor.x < 0 || anchor.x >= EXTENT || anchor.y < 0 || anchor.y >= EXTENT) {
+        if (anchor.x < 0 || anchor.x >= EXTENT$1 || anchor.y < 0 || anchor.y >= EXTENT$1) {
             return;
         }
         addSymbol(bucket, anchor, anchor, line, shapedTextOrientations, shapedIcon, imageMap, verticallyShapedIcon, bucket.layers[0], bucket.collisionBoxArray, feature.index, feature.sourceLayerIndex, bucket.index, textPadding, textAlongLine, textOffset, iconBoxScale, iconPadding, iconAlongLine, iconOffset, feature, sizes, isSDFIcon, availableImages, canonical);
     };
     if (symbolPlacement === 'line') {
-        for (const line of clipLine(feature.geometry, 0, 0, EXTENT, EXTENT)) {
-            const anchors = getAnchors(line, symbolMinDistance, textMaxAngle, shapedTextOrientations.vertical || defaultShaping, shapedIcon, glyphSize, textMaxBoxScale, bucket.overscaling, EXTENT);
+        for (const line of clipLine(feature.geometry, 0, 0, EXTENT$1, EXTENT$1)) {
+            const anchors = getAnchors(line, symbolMinDistance, textMaxAngle, shapedTextOrientations.vertical || defaultShaping, shapedIcon, glyphSize, textMaxBoxScale, bucket.overscaling, EXTENT$1);
             for (const anchor of anchors) {
                 const shapedText = defaultShaping;
                 if (!shapedText || !anchorIsTooClose(bucket, shapedText.text, textRepeatDistance, anchor)) {
@@ -18500,7 +18476,7 @@ function addFeature(bucket, feature, shapedTextOrientations, shapedIcon, imageMa
             }
         }
     } else if (feature.type === 'Polygon') {
-        for (const polygon of classifyRings$1(feature.geometry, 0)) {
+        for (const polygon of classifyRings(feature.geometry, 0)) {
             const poi = findPoleOfInaccessibility(polygon, 16);
             addSymbolAtAnchor(polygon[0], new Anchor(poi.x, poi.y, 0, 0, undefined));
         }
@@ -18708,14 +18684,14 @@ function anchorIsTooClose(bucket, text, repeatDistance, anchor) {
     return false;
 }
 
-const vectorTileFeatureTypes = vectorTile.VectorTileFeature.types;
+const vectorTileFeatureTypes$2 = vectorTile.VectorTileFeature.types;
 const shaderOpacityAttributes = [{
         name: 'a_fade_opacity',
         components: 1,
         type: 'Uint8',
         offset: 0
     }];
-function addVertex(array, projectedAnchorX, projectedAnchorY, projectedAnchorZ, tileAnchorX, tileAnchorY, ox, oy, tx, ty, sizeVertex, isSDF, pixelOffsetX, pixelOffsetY, minFontScaleX, minFontScaleY) {
+function addVertex$1(array, projectedAnchorX, projectedAnchorY, projectedAnchorZ, tileAnchorX, tileAnchorY, ox, oy, tx, ty, sizeVertex, isSDF, pixelOffsetX, pixelOffsetY, minFontScaleX, minFontScaleY) {
     const aSizeX = sizeVertex ? Math.min(MAX_PACKED_SIZE, Math.round(sizeVertex[0])) : 0;
     const aSizeY = sizeVertex ? Math.min(MAX_PACKED_SIZE, Math.round(sizeVertex[1])) : 0;
     array.emplaceBack(projectedAnchorX, projectedAnchorY, Math.round(ox * 32), Math.round(oy * 32), tx, ty, (aSizeX << 1) + (isSDF ? 1 : 0), aSizeY, pixelOffsetX * 16, pixelOffsetY * 16, minFontScaleX * 256, minFontScaleY * 256, projectedAnchorZ, tileAnchorX, tileAnchorY, 0);
@@ -18814,8 +18790,8 @@ class SymbolBucket {
         this.hasRTLText = false;
         this.sortKeyRanges = [];
         this.collisionCircleArray = [];
-        this.placementInvProjMatrix = identity$1([]);
-        this.placementViewportMatrix = identity$1([]);
+        this.placementInvProjMatrix = identity([]);
+        this.placementViewportMatrix = identity([]);
         const layer = this.layers[0];
         const unevaluatedLayoutValues = layer._unevaluatedLayout._values;
         this.textSizeData = getSizeData(this.zoom, unevaluatedLayoutValues['text-size']);
@@ -18906,7 +18882,7 @@ class SymbolBucket {
                 sourceLayerIndex,
                 geometry: evaluationFeature.geometry,
                 properties: feature.properties,
-                type: vectorTileFeatureTypes[feature.type],
+                type: vectorTileFeatureTypes$2[feature.type],
                 sortKey
             };
             this.features.push(symbolFeature);
@@ -19018,10 +18994,10 @@ class SymbolBucket {
             const {tl, tr, bl, br, tex, pixelOffsetTL, pixelOffsetBR, minFontScaleX, minFontScaleY, glyphOffset, isSDF, sectionIndex} = quads[i];
             const index = segment.vertexLength;
             const y = glyphOffset[1];
-            addVertex(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, tl.x, y + tl.y, tex.x, tex.y, sizeVertex, isSDF, pixelOffsetTL.x, pixelOffsetTL.y, minFontScaleX, minFontScaleY);
-            addVertex(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, tr.x, y + tr.y, tex.x + tex.w, tex.y, sizeVertex, isSDF, pixelOffsetBR.x, pixelOffsetTL.y, minFontScaleX, minFontScaleY);
-            addVertex(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, bl.x, y + bl.y, tex.x, tex.y + tex.h, sizeVertex, isSDF, pixelOffsetTL.x, pixelOffsetBR.y, minFontScaleX, minFontScaleY);
-            addVertex(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, br.x, y + br.y, tex.x + tex.w, tex.y + tex.h, sizeVertex, isSDF, pixelOffsetBR.x, pixelOffsetBR.y, minFontScaleX, minFontScaleY);
+            addVertex$1(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, tl.x, y + tl.y, tex.x, tex.y, sizeVertex, isSDF, pixelOffsetTL.x, pixelOffsetTL.y, minFontScaleX, minFontScaleY);
+            addVertex$1(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, tr.x, y + tr.y, tex.x + tex.w, tex.y, sizeVertex, isSDF, pixelOffsetBR.x, pixelOffsetTL.y, minFontScaleX, minFontScaleY);
+            addVertex$1(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, bl.x, y + bl.y, tex.x, tex.y + tex.h, sizeVertex, isSDF, pixelOffsetTL.x, pixelOffsetBR.y, minFontScaleX, minFontScaleY);
+            addVertex$1(layoutVertexArray, labelAnchor.x, labelAnchor.y, labelAnchor.z, tileAnchor.x, tileAnchor.y, br.x, y + br.y, tex.x + tex.w, tex.y + tex.h, sizeVertex, isSDF, pixelOffsetBR.x, pixelOffsetBR.y, minFontScaleX, minFontScaleY);
             addDynamicAttributes(arrays.dynamicLayoutVertexArray, labelAnchor, angle);
             indexArray.emplaceBack(index, index + 1, index + 2);
             indexArray.emplaceBack(index + 1, index + 2, index + 3);
@@ -19339,7 +19315,7 @@ function resolveTokens(properties, text) {
     });
 }
 
-const layout = new Properties({
+const layout$5 = new Properties({
     'symbol-placement': new DataConstantProperty(spec['layout_symbol']['symbol-placement']),
     'symbol-spacing': new DataConstantProperty(spec['layout_symbol']['symbol-spacing']),
     'symbol-avoid-edges': new DataConstantProperty(spec['layout_symbol']['symbol-avoid-edges']),
@@ -19382,7 +19358,7 @@ const layout = new Properties({
     'text-ignore-placement': new DataConstantProperty(spec['layout_symbol']['text-ignore-placement']),
     'text-optional': new DataConstantProperty(spec['layout_symbol']['text-optional'])
 });
-const paint$3 = new Properties({
+const paint$6 = new Properties({
     'icon-opacity': new DataDrivenProperty(spec['paint_symbol']['icon-opacity']),
     'icon-color': new DataDrivenProperty(spec['paint_symbol']['icon-color']),
     'icon-halo-color': new DataDrivenProperty(spec['paint_symbol']['icon-halo-color']),
@@ -19402,9 +19378,9 @@ const paint$3 = new Properties({
     'text-translate': new DataConstantProperty(spec['paint_symbol']['text-translate']),
     'text-translate-anchor': new DataConstantProperty(spec['paint_symbol']['text-translate-anchor'])
 });
-var properties$3 = {
-    paint: paint$3,
-    layout
+var properties$6 = {
+    paint: paint$6,
+    layout: layout$5
 };
 
 class FormatSectionOverride {
@@ -19441,7 +19417,7 @@ register('FormatSectionOverride', FormatSectionOverride, { omit: ['defaultValue'
 
 class SymbolStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$3);
+        super(layer, properties$6);
     }
     recalculate(parameters, availableImages) {
         super.recalculate(parameters, availableImages);
@@ -19501,7 +19477,7 @@ class SymbolStyleLayer extends StyleLayer {
         return false;
     }
     _setPaintOverrides() {
-        for (const overridable of properties$3.paint.overridableProperties) {
+        for (const overridable of properties$6.paint.overridableProperties) {
             if (!SymbolStyleLayer.hasPaintOverride(this.layout, overridable)) {
                 continue;
             }
@@ -19525,7 +19501,7 @@ class SymbolStyleLayer extends StyleLayer {
     }
     static hasPaintOverride(layout, propertyName) {
         const textField = layout.get('text-field');
-        const property = properties$3.paint.properties[propertyName];
+        const property = properties$6.paint.properties[propertyName];
         let hasOverrides = false;
         const checkSections = sections => {
             for (const section of sections) {
@@ -19562,16 +19538,16 @@ class SymbolStyleLayer extends StyleLayer {
     }
 }
 
-const paint$2 = new Properties({
+const paint$7 = new Properties({
     'background-color': new DataConstantProperty(spec['paint_background']['background-color']),
     'background-pattern': new CrossFadedProperty(spec['paint_background']['background-pattern']),
     'background-opacity': new DataConstantProperty(spec['paint_background']['background-opacity'])
 });
-var properties$2 = { paint: paint$2 };
+var properties$7 = { paint: paint$7 };
 
 class BackgroundStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$2);
+        super(layer, properties$7);
     }
     getProgramIds() {
         const image = this.paint.get('background-pattern');
@@ -19579,7 +19555,7 @@ class BackgroundStyleLayer extends StyleLayer {
     }
 }
 
-const paint$1 = new Properties({
+const paint$8 = new Properties({
     'raster-opacity': new DataConstantProperty(spec['paint_raster']['raster-opacity']),
     'raster-hue-rotate': new DataConstantProperty(spec['paint_raster']['raster-hue-rotate']),
     'raster-brightness-min': new DataConstantProperty(spec['paint_raster']['raster-brightness-min']),
@@ -19589,11 +19565,11 @@ const paint$1 = new Properties({
     'raster-resampling': new DataConstantProperty(spec['paint_raster']['raster-resampling']),
     'raster-fade-duration': new DataConstantProperty(spec['paint_raster']['raster-fade-duration'])
 });
-var properties$1 = { paint: paint$1 };
+var properties$8 = { paint: paint$8 };
 
 class RasterStyleLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties$1);
+        super(layer, properties$8);
     }
     getProgramIds() {
         return ['raster'];
@@ -19645,7 +19621,7 @@ class CustomStyleLayer extends StyleLayer {
     }
 }
 
-const paint = new Properties({
+const paint$9 = new Properties({
     'sky-type': new DataConstantProperty(spec['paint_sky']['sky-type']),
     'sky-atmosphere-sun': new DataConstantProperty(spec['paint_sky']['sky-atmosphere-sun']),
     'sky-atmosphere-sun-intensity': new DataConstantProperty(spec['paint_sky']['sky-atmosphere-sun-intensity']),
@@ -19656,19 +19632,19 @@ const paint = new Properties({
     'sky-atmosphere-color': new DataConstantProperty(spec['paint_sky']['sky-atmosphere-color']),
     'sky-opacity': new DataConstantProperty(spec['paint_sky']['sky-opacity'])
 });
-var properties = { paint };
+var properties$9 = { paint: paint$9 };
 
 function getCelestialDirection(azimuth, altitude, leftHanded) {
     const up = fromValues(0, 0, 1);
-    const rotation = identity(create$1());
-    rotateY(rotation, rotation, leftHanded ? -degToRad(azimuth) + Math.PI : degToRad(azimuth));
-    rotateX(rotation, rotation, -degToRad(altitude));
+    const rotation = identity$1(create$4());
+    rotateY$1(rotation, rotation, leftHanded ? -degToRad(azimuth) + Math.PI : degToRad(azimuth));
+    rotateX$1(rotation, rotation, -degToRad(altitude));
     transformQuat(up, up, rotation);
-    return normalize$2(up, up);
+    return normalize(up, up);
 }
 class SkyLayer extends StyleLayer {
     constructor(layer) {
-        super(layer, properties);
+        super(layer, properties$9);
         this._updateColorRamp();
     }
     _handleSpecialPaintPropertyUpdate(name) {
@@ -19761,7 +19737,7 @@ function createStyleLayer(layer) {
     }
 }
 
-const {HTMLImageElement, HTMLCanvasElement, HTMLVideoElement, ImageData, ImageBitmap} = window$1;
+const {HTMLImageElement, HTMLCanvasElement, HTMLVideoElement, ImageData: ImageData$1, ImageBitmap: ImageBitmap$1} = window$1;
 class Texture {
     constructor(context, image, format, options) {
         this.context = context;
@@ -19782,7 +19758,7 @@ class Texture {
                 width,
                 height
             ];
-            if (image instanceof HTMLImageElement || image instanceof HTMLCanvasElement || image instanceof HTMLVideoElement || image instanceof ImageData || ImageBitmap && image instanceof ImageBitmap) {
+            if (image instanceof HTMLImageElement || image instanceof HTMLCanvasElement || image instanceof HTMLVideoElement || image instanceof ImageData$1 || ImageBitmap$1 && image instanceof ImageBitmap$1) {
                 gl.texImage2D(gl.TEXTURE_2D, 0, this.format, this.format, gl.UNSIGNED_BYTE, image);
             } else {
                 gl.texImage2D(gl.TEXTURE_2D, 0, this.format, width, height, 0, this.format, gl.UNSIGNED_BYTE, image.data);
@@ -19792,7 +19768,7 @@ class Texture {
                 x: 0,
                 y: 0
             };
-            if (image instanceof HTMLImageElement || image instanceof HTMLCanvasElement || image instanceof HTMLVideoElement || image instanceof ImageData || ImageBitmap && image instanceof ImageBitmap) {
+            if (image instanceof HTMLImageElement || image instanceof HTMLCanvasElement || image instanceof HTMLVideoElement || image instanceof ImageData$1 || ImageBitmap$1 && image instanceof ImageBitmap$1) {
                 gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, gl.RGBA, gl.UNSIGNED_BYTE, image);
             } else {
                 gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, width, height, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
@@ -20194,9 +20170,9 @@ class Actor {
             delete this.callbacks[id];
             if (callback) {
                 if (task.error) {
-                    callback(deserialize$1(task.error));
+                    callback(deserialize(task.error));
                 } else {
-                    callback(null, deserialize$1(task.data));
+                    callback(null, deserialize(task.data));
                 }
             }
         } else {
@@ -20212,7 +20188,7 @@ class Actor {
                 }, buffers);
             } : _ => {
             };
-            const params = deserialize$1(task.data);
+            const params = deserialize(task.data);
             if (this.parent[task.type]) {
                 this.parent[task.type](task.sourceMapId, params, done);
             } else if (this.parent.getWorkerSource) {
@@ -20293,11 +20269,11 @@ function tileTransform(id, projection) {
     };
 }
 function getTilePoint(tileTransform, {x, y}, wrap = 0) {
-    return new pointGeometry(((x - wrap) * tileTransform.scale - tileTransform.x) * EXTENT, (y * tileTransform.scale - tileTransform.y) * EXTENT);
+    return new pointGeometry(((x - wrap) * tileTransform.scale - tileTransform.x) * EXTENT$1, (y * tileTransform.scale - tileTransform.y) * EXTENT$1);
 }
 function getTileVec3(tileTransform, coord, wrap = 0) {
-    const x = ((coord.x - wrap) * tileTransform.scale - tileTransform.x) * EXTENT;
-    const y = (coord.y * tileTransform.scale - tileTransform.y) * EXTENT;
+    const x = ((coord.x - wrap) * tileTransform.scale - tileTransform.x) * EXTENT$1;
+    const y = (coord.y * tileTransform.scale - tileTransform.y) * EXTENT$1;
     return fromValues(x, y, altitudeFromMercatorZ(coord.z, coord.y));
 }
 
@@ -20513,7 +20489,7 @@ class Feature {
     }
 }
 
-function deserialize(input, style) {
+function deserialize$1(input, style) {
     const output = {};
     if (!style)
         return output;
@@ -20597,8 +20573,8 @@ function getTileMesh(canonical, projection) {
             const lat = latFromMercatorY((canonical.y + (y + seamPadding(y)) / meshSize) / z2);
             const p = projection.project(lng, lat);
             const k = y * gridSize + x;
-            reprojectedCoords[2 * k + 0] = Math.round((p.x * cs.scale - cs.x) * EXTENT);
-            reprojectedCoords[2 * k + 1] = Math.round((p.y * cs.scale - cs.y) * EXTENT);
+            reprojectedCoords[2 * k + 0] = Math.round((p.x * cs.scale - cs.x) * EXTENT$1);
+            reprojectedCoords[2 * k + 1] = Math.round((p.y * cs.scale - cs.y) * EXTENT$1);
         }
     }
     used.fill(0);
@@ -20636,7 +20612,7 @@ function getTileMesh(canonical, projection) {
     function addVertex(x, y) {
         const k = y * gridSize + x;
         if (indexMap[k] === 0) {
-            vertices.emplaceBack(reprojectedCoords[2 * k + 0], reprojectedCoords[2 * k + 1], x * EXTENT / meshSize, y * EXTENT / meshSize);
+            vertices.emplaceBack(reprojectedCoords[2 * k + 0], reprojectedCoords[2 * k + 1], x * EXTENT$1 / meshSize, y * EXTENT$1 / meshSize);
             indexMap[k] = ++numVertices;
         }
         return indexMap[k] - 1;
@@ -20679,13 +20655,13 @@ const CLOCK_SKEW_RETRY_TIMEOUT = 30000;
 const BOUNDS_FEATURE = (() => {
     return {
         type: 2,
-        extent: EXTENT,
+        extent: EXTENT$1,
         loadGeometry() {
             return [[
                     new pointGeometry(0, 0),
-                    new pointGeometry(EXTENT + 1, 0),
-                    new pointGeometry(EXTENT + 1, EXTENT + 1),
-                    new pointGeometry(0, EXTENT + 1),
+                    new pointGeometry(EXTENT$1 + 1, 0),
+                    new pointGeometry(EXTENT$1 + 1, EXTENT$1 + 1),
+                    new pointGeometry(0, EXTENT$1 + 1),
                     new pointGeometry(0, 0)
                 ]];
         }
@@ -20713,7 +20689,7 @@ class Tile {
     }
     registerFadeDuration(duration) {
         const fadeEndTime = duration + this.timeAdded;
-        if (fadeEndTime < exported$1.now())
+        if (fadeEndTime < exported.now())
             return;
         if (this.fadeEndTime && fadeEndTime < this.fadeEndTime)
             return;
@@ -20745,7 +20721,7 @@ class Tile {
             }
         }
         this.collisionBoxArray = data.collisionBoxArray;
-        this.buckets = deserialize(data.buckets, painter.style);
+        this.buckets = deserialize$1(data.buckets, painter.style);
         this.hasSymbolBuckets = false;
         for (const id in this.buckets) {
             const bucket = this.buckets[id];
@@ -20975,13 +20951,13 @@ class Tile {
         return this.symbolFadeHoldUntil !== undefined;
     }
     symbolFadeFinished() {
-        return !this.symbolFadeHoldUntil || this.symbolFadeHoldUntil < exported$1.now();
+        return !this.symbolFadeHoldUntil || this.symbolFadeHoldUntil < exported.now();
     }
     clearFadeHold() {
         this.symbolFadeHoldUntil = undefined;
     }
     setHoldDuration(duration) {
-        this.symbolFadeHoldUntil = exported$1.now() + duration;
+        this.symbolFadeHoldUntil = exported.now() + duration;
     }
     setDependencies(namespace, dependencies) {
         const index = {};
@@ -21057,7 +21033,7 @@ class SourceFeatureState {
         const feature = String(featureId);
         this.stateChanges[sourceLayer] = this.stateChanges[sourceLayer] || {};
         this.stateChanges[sourceLayer][feature] = this.stateChanges[sourceLayer][feature] || {};
-        extend$1(this.stateChanges[sourceLayer][feature], newState);
+        extend(this.stateChanges[sourceLayer][feature], newState);
         if (this.deletedStates[sourceLayer] === null) {
             this.deletedStates[sourceLayer] = {};
             for (const ft in this.state[sourceLayer]) {
@@ -21109,7 +21085,7 @@ class SourceFeatureState {
         const feature = String(featureId);
         const base = this.state[sourceLayer] || {};
         const changes = this.stateChanges[sourceLayer] || {};
-        const reconciledState = extend$1({}, base[feature], changes[feature]);
+        const reconciledState = extend({}, base[feature], changes[feature]);
         if (this.deletedStates[sourceLayer] === null)
             return {};
         else if (this.deletedStates[sourceLayer]) {
@@ -21132,7 +21108,7 @@ class SourceFeatureState {
             for (const feature in this.stateChanges[sourceLayer]) {
                 if (!this.state[sourceLayer][feature])
                     this.state[sourceLayer][feature] = {};
-                extend$1(this.state[sourceLayer][feature], this.stateChanges[sourceLayer][feature]);
+                extend(this.state[sourceLayer][feature], this.stateChanges[sourceLayer][feature]);
                 layerStates[feature] = this.state[sourceLayer][feature];
             }
             featuresChanged[sourceLayer] = layerStates;
@@ -21159,7 +21135,7 @@ class SourceFeatureState {
                 }
             }
             featuresChanged[sourceLayer] = featuresChanged[sourceLayer] || {};
-            extend$1(featuresChanged[sourceLayer], layerStates);
+            extend(featuresChanged[sourceLayer], layerStates);
         }
         this.stateChanges = {};
         this.deletedStates = {};
@@ -21758,7 +21734,7 @@ class TileCache {
     }
 }
 
-const ALWAYS$1 = 519;
+const ALWAYS = 519;
 class DepthMode {
     constructor(depthFunc, depthMask, depthRange) {
         this.func = depthFunc;
@@ -21768,12 +21744,12 @@ class DepthMode {
 }
 DepthMode.ReadOnly = false;
 DepthMode.ReadWrite = true;
-DepthMode.disabled = new DepthMode(ALWAYS$1, DepthMode.ReadOnly, [
+DepthMode.disabled = new DepthMode(ALWAYS, DepthMode.ReadOnly, [
     0,
     1
 ]);
 
-const ALWAYS = 519;
+const ALWAYS$1 = 519;
 const KEEP = 7680;
 class StencilMode {
     constructor(test, ref, mask, fail, depthFail, pass) {
@@ -21786,7 +21762,7 @@ class StencilMode {
     }
 }
 StencilMode.disabled = new StencilMode({
-    func: ALWAYS,
+    func: ALWAYS$1,
     mask: 0
 }, 0, 0, KEEP, KEEP, KEEP);
 
@@ -21996,7 +21972,7 @@ class SourceCache extends Evented {
                 this.update(this.transform);
             return;
         }
-        tile.timeAdded = exported$1.now();
+        tile.timeAdded = exported.now();
         if (previousState === 'expired')
             tile.refreshedUponExpiration = true;
         this._setTileReloadTimer(id, tile);
@@ -22173,7 +22149,7 @@ class SourceCache extends Evented {
             for (const id of ids) {
                 const tileID = retain[id];
                 const tile = this._tiles[id];
-                if (!tile || tile.fadeEndTime && tile.fadeEndTime <= exported$1.now())
+                if (!tile || tile.fadeEndTime && tile.fadeEndTime <= exported.now())
                     continue;
                 const parentTile = this.findLoadedParent(tileID, Math.max(tileID.overscaledZ - SourceCache.maxOverzooming, this._source.minzoom));
                 if (parentTile) {
@@ -22419,7 +22395,7 @@ class SourceCache extends Evented {
         if (isRasterType(this._source.type)) {
             for (const id in this._tiles) {
                 const tile = this._tiles[id];
-                if (tile.fadeEndTime !== undefined && tile.fadeEndTime >= exported$1.now()) {
+                if (tile.fadeEndTime !== undefined && tile.fadeEndTime >= exported.now()) {
                     return true;
                 }
             }
@@ -22499,7 +22475,7 @@ class Elevation {
     }
     getAtTileOffset(tileID, x, y) {
         const tilesAtTileZoom = 1 << tileID.canonical.z;
-        return this.getAtPointOrZero(new MercatorCoordinate(tileID.wrap + (tileID.canonical.x + x / EXTENT) / tilesAtTileZoom, (tileID.canonical.y + y / EXTENT) / tilesAtTileZoom));
+        return this.getAtPointOrZero(new MercatorCoordinate(tileID.wrap + (tileID.canonical.x + x / EXTENT$1) / tilesAtTileZoom, (tileID.canonical.y + y / EXTENT$1) / tilesAtTileZoom));
     }
     getForTilePoints(tileID, points, interpolated, useDemTile) {
         const helper = DEMSampler.create(this, tileID, useDemTile);
@@ -22577,7 +22553,7 @@ class DEMSampler {
         const scale = 1 << tileID.canonical.z - demTileID.canonical.z;
         const xOffset = (tileID.canonical.x / scale - demTileID.canonical.x) * dem.dim;
         const yOffset = (tileID.canonical.y / scale - demTileID.canonical.y) * dem.dim;
-        const k = demTile.tileSize / EXTENT / scale;
+        const k = demTile.tileSize / EXTENT$1 / scale;
         return new DEMSampler(demTile, k, [
             xOffset,
             yOffset
@@ -22613,7 +22589,7 @@ class FeatureIndex {
         this.x = tileID.canonical.x;
         this.y = tileID.canonical.y;
         this.z = tileID.canonical.z;
-        this.grid = new gridIndex(EXTENT, 16, 0);
+        this.grid = new gridIndex(EXTENT$1, 16, 0);
         this.featureIndexArray = new FeatureIndexArray();
         this.promoteId = promoteId;
     }
@@ -22636,7 +22612,7 @@ class FeatureIndex {
                 bbox[2] = Math.max(bbox[2], p.x);
                 bbox[3] = Math.max(bbox[3], p.y);
             }
-            if (bbox[0] < EXTENT && bbox[1] < EXTENT && bbox[2] >= 0 && bbox[3] >= 0) {
+            if (bbox[0] < EXTENT$1 && bbox[1] < EXTENT$1 && bbox[2] >= 0 && bbox[3] >= 0) {
                 grid.insert(key, bbox[0], bbox[1], bbox[2], bbox[3]);
             }
         }
@@ -22714,7 +22690,7 @@ class FeatureIndex {
             if (id !== undefined && sourceFeatureState) {
                 featureState = sourceFeatureState.getState(styleLayer.sourceLayer || '_geojsonTileLayer', id);
             }
-            const serializedLayer = extend$1({}, serializedLayers[layerID]);
+            const serializedLayer = extend({}, serializedLayers[layerID]);
             serializedLayer.paint = evaluateProperties(serializedLayer.paint, styleLayer.paint, feature, featureState, availableImages);
             serializedLayer.layout = evaluateProperties(serializedLayer.layout, styleLayer.layout, feature, featureState, availableImages);
             const intersectionZ = !intersectionTest || intersectionTest(feature, styleLayer, featureState, layoutVertexArrayOffset);
@@ -23178,7 +23154,7 @@ class VectorTileWorkerSource extends Evented {
                             resourceTiming.resourceTiming = JSON.parse(JSON.stringify(resourceTimingData));
                         }
                     }
-                    callback(null, extend$1({ rawTileData: rawTileData.slice(0) }, result, cacheControl, resourceTiming));
+                    callback(null, extend({ rawTileData: rawTileData.slice(0) }, result, cacheControl, resourceTiming));
                 });
             };
             if (this.isSpriteLoaded) {
@@ -23271,7 +23247,7 @@ var albers = {
     ],
     conic: true,
     initializeConstants() {
-        if (this.constants && exactEquals(this.parallels, this.constants.parallels)) {
+        if (this.constants && exactEquals$3(this.parallels, this.constants.parallels)) {
             return;
         }
         const sy0 = Math.sin(degToRad(this.parallels[0]));
@@ -23413,7 +23389,7 @@ var lambertConformalConic = {
     ],
     conic: true,
     initializeConstants() {
-        if (this.constants && exactEquals(this.parallels, this.constants.parallels)) {
+        if (this.constants && exactEquals$3(this.parallels, this.constants.parallels)) {
             return;
         }
         const y0 = degToRad(this.parallels[0]);
@@ -23474,8 +23450,8 @@ var mercator = {
         0
     ],
     project(lng, lat) {
-        const x = mercatorXfromLng(lng);
-        const y = mercatorYfromLat(lat);
+        const x = mercatorXfromLng$1(lng);
+        const y = mercatorYfromLat$1(lat);
         return {
             x,
             y
@@ -23488,7 +23464,7 @@ var mercator = {
     }
 };
 
-const maxPhi$1 = degToRad(MAX_MERCATOR_LATITUDE);
+const maxPhi = degToRad(MAX_MERCATOR_LATITUDE);
 var naturalEarth = {
     name: 'naturalEarth',
     center: [
@@ -23523,7 +23499,7 @@ var naturalEarth = {
             phi2 = phi * phi;
             const phi4 = phi2 * phi2;
             delta = (phi * (1.007226 + phi2 * (0.015085 + phi4 * (-0.044475 + 0.028874 * phi2 - 0.005916 * phi4))) - y) / (1.007226 + phi2 * (0.015085 * 3 + phi4 * (-0.044475 * 7 + 0.028874 * 9 * phi2 - 0.005916 * 11 * phi4)));
-            phi = clamp(phi - delta, -maxPhi$1, maxPhi$1);
+            phi = clamp(phi - delta, -maxPhi, maxPhi);
         } while (Math.abs(delta) > epsilon && --i > 0);
         phi2 = phi * phi;
         const lambda = x / (0.8707 + phi2 * (-0.131979 + phi2 * (-0.013791 + phi2 * phi2 * phi2 * (0.003971 - 0.001529 * phi2))));
@@ -23533,7 +23509,7 @@ var naturalEarth = {
     }
 };
 
-const maxPhi = degToRad(MAX_MERCATOR_LATITUDE);
+const maxPhi$1 = degToRad(MAX_MERCATOR_LATITUDE);
 var winkelTripel = {
     name: 'winkelTripel',
     center: [
@@ -23571,7 +23547,7 @@ var winkelTripel = {
             dlambda = (fy * dxdphi - fx * dydphi) / denominator;
             dphi = (fx * dydlambda - fy * dxdlambda) / denominator;
             lambda = clamp(lambda - dlambda, -Math.PI, Math.PI);
-            phi = clamp(phi - dphi, -maxPhi, maxPhi);
+            phi = clamp(phi - dphi, -maxPhi$1, maxPhi$1);
         } while ((Math.abs(dlambda) > epsilon || Math.abs(dphi) > epsilon) && --i > 0);
         return new LngLat(radToDeg(lambda), radToDeg(phi));
     }
@@ -23623,10 +23599,10 @@ function getConicProjection(projection, config) {
                     unproject
                 };
             }
-            return extend$1({}, projection, config, cylindricalFunctions);
+            return extend({}, projection, config, cylindricalFunctions);
         }
     }
-    return extend$1({}, projection, config);
+    return extend({}, projection, config);
 }
 function getProjection(config) {
     const projection = projections[config.name];
@@ -23646,7 +23622,7 @@ exports.DEMData = DEMData;
 exports.DataConstantProperty = DataConstantProperty;
 exports.DedupedRequest = DedupedRequest;
 exports.DepthMode = DepthMode;
-exports.EXTENT = EXTENT;
+exports.EXTENT = EXTENT$1;
 exports.Elevation = Elevation;
 exports.ErrorEvent = ErrorEvent;
 exports.EvaluationParameters = EvaluationParameters;
@@ -23706,23 +23682,23 @@ exports.cacheEntryPossiblyAdded = cacheEntryPossiblyAdded;
 exports.clamp = clamp;
 exports.clearTileCache = clearTileCache;
 exports.clipLine = clipLine;
-exports.clone = clone;
+exports.clone = clone$2;
 exports.clone$1 = clone$1;
-exports.clone$2 = clone$2;
+exports.clone$2 = clone;
 exports.collisionCircleLayout = collisionCircleLayout;
 exports.config = config;
 exports.conjugate = conjugate;
 exports.copy = copy;
-exports.create = create$3;
-exports.create$1 = create$4;
-exports.create$2 = create$5;
+exports.create = create$2;
+exports.create$1 = create$1;
+exports.create$2 = create;
 exports.createExpression = createExpression;
 exports.createLayout = createLayout;
 exports.createStyleLayer = createStyleLayer;
 exports.cross = cross;
 exports.degToRad = degToRad;
 exports.div = div;
-exports.dot = dot$2;
+exports.dot = dot;
 exports.dot$1 = dot$1;
 exports.ease = ease;
 exports.easeCubicInOut = easeCubicInOut;
@@ -23733,11 +23709,11 @@ exports.evaluateSizeForFeature = evaluateSizeForFeature;
 exports.evaluateSizeForZoom = evaluateSizeForZoom;
 exports.evaluateVariableOffset = evaluateVariableOffset;
 exports.evented = evented;
-exports.exactEquals = exactEquals$1;
-exports.exactEquals$1 = exactEquals$3;
-exports.exported = exported$1;
-exports.exported$1 = exported;
-exports.extend = extend$1;
+exports.exactEquals = exactEquals$2;
+exports.exactEquals$1 = exactEquals;
+exports.exported = exported;
+exports.exported$1 = exported$1;
+exports.extend = extend;
 exports.filterObject = filterObject;
 exports.fromMat4 = fromMat4;
 exports.fromQuat = fromQuat;
@@ -23758,28 +23734,28 @@ exports.getReferrer = getReferrer;
 exports.getTilePoint = getTilePoint;
 exports.getTileVec3 = getTileVec3;
 exports.getVideo = getVideo;
-exports.identity = identity$1;
-exports.identity$1 = identity;
+exports.identity = identity;
+exports.identity$1 = identity$1;
 exports.invert = invert;
 exports.isMapAuthenticated = isMapAuthenticated;
 exports.isMapboxURL = isMapboxURL;
 exports.latFromMercatorY = latFromMercatorY;
 exports.len = len;
-exports.length = length$2;
-exports.length$1 = length;
+exports.length = length;
+exports.length$1 = length$2;
 exports.loadVectorTile = loadVectorTile;
 exports.makeRequest = makeRequest;
-exports.mercatorXfromLng = mercatorXfromLng;
-exports.mercatorYfromLat = mercatorYfromLat;
+exports.mercatorXfromLng = mercatorXfromLng$1;
+exports.mercatorYfromLat = mercatorYfromLat$1;
 exports.mercatorZfromAltitude = mercatorZfromAltitude;
-exports.mul = mul;
-exports.mul$1 = mul$2;
+exports.mul = mul$2;
+exports.mul$1 = mul;
 exports.mul$2 = mul$1;
-exports.multiply = multiply$2;
+exports.multiply = multiply;
 exports.multiply$1 = multiply$1;
 exports.nextPowerOfTwo = nextPowerOfTwo;
-exports.normalize = normalize$2;
-exports.normalize$1 = normalize;
+exports.normalize = normalize;
+exports.normalize$1 = normalize$2;
 exports.number = number;
 exports.ortho = ortho;
 exports.pbf = pbf;
@@ -23800,14 +23776,14 @@ exports.refProperties = refProperties;
 exports.registerForPluginStateChange = registerForPluginStateChange;
 exports.removeAuthState = removeAuthState;
 exports.renderColorRamp = renderColorRamp;
-exports.rotateX = rotateX$1;
-exports.rotateX$1 = rotateX;
-exports.rotateY = rotateY$1;
-exports.rotateZ = rotateZ$1;
-exports.rotateZ$1 = rotateZ;
+exports.rotateX = rotateX;
+exports.rotateX$1 = rotateX$1;
+exports.rotateY = rotateY;
+exports.rotateZ = rotateZ;
+exports.rotateZ$1 = rotateZ$1;
 exports.scale = scale$1;
-exports.scale$1 = scale$2;
-exports.scale$2 = scale;
+exports.scale$1 = scale;
+exports.scale$2 = scale$2;
 exports.scaleAndAdd = scaleAndAdd;
 exports.setCacheLimits = setCacheLimits;
 exports.setRTLTextPlugin = setRTLTextPlugin;
@@ -23819,15 +23795,15 @@ exports.subtract = subtract;
 exports.symbolSize = symbolSize;
 exports.tileTransform = tileTransform;
 exports.transformMat3 = transformMat3;
-exports.transformMat4 = transformMat4;
-exports.transformMat4$1 = transformMat4$1;
+exports.transformMat4 = transformMat4$1;
+exports.transformMat4$1 = transformMat4;
 exports.transformQuat = transformQuat;
-exports.translate = translate;
+exports.translate = translate$1;
 exports.triggerPluginCompletionEvent = triggerPluginCompletionEvent;
 exports.uniqueId = uniqueId;
 exports.validateCustomStyleLayer = validateCustomStyleLayer;
-exports.validateFog = validateFog;
-exports.validateLight = validateLight;
+exports.validateFog = validateFog$1;
+exports.validateLight = validateLight$1;
 exports.validateStyle = validateStyle;
 exports.values = values;
 exports.vectorTile = vectorTile;
@@ -23957,17 +23933,17 @@ class RasterDEMTileWorkerSource {
     }
 }
 
-var geojsonRewind = rewind$1;
-function rewind$1(gj, outer) {
+var geojsonRewind = rewind;
+function rewind(gj, outer) {
     var type = gj && gj.type, i;
     if (type === 'FeatureCollection') {
         for (i = 0; i < gj.features.length; i++)
-            rewind$1(gj.features[i], outer);
+            rewind(gj.features[i], outer);
     } else if (type === 'GeometryCollection') {
         for (i = 0; i < gj.geometries.length; i++)
-            rewind$1(gj.geometries[i], outer);
+            rewind(gj.geometries[i], outer);
     } else if (type === 'Feature') {
-        rewind$1(gj.geometry, outer);
+        rewind(gj.geometry, outer);
     } else if (type === 'Polygon') {
         rewindRings(gj.coordinates, outer);
     } else if (type === 'MultiPolygon') {
@@ -23985,16 +23961,19 @@ function rewindRings(rings, outer) {
     }
 }
 function rewindRing(ring, dir) {
-    var area = 0;
+    var area = 0, err = 0;
     for (var i = 0, len = ring.length, j = len - 1; i < len; j = i++) {
-        area += (ring[i][0] - ring[j][0]) * (ring[j][1] + ring[i][1]);
+        var k = (ring[i][0] - ring[j][0]) * (ring[j][1] + ring[i][1]);
+        var m = area + k;
+        err += Math.abs(area) >= Math.abs(k) ? area - m + k : k - m + area;
+        area = m;
     }
-    if (area >= 0 !== !!dir)
+    if (area + err >= 0 !== !!dir)
         ring.reverse();
 }
 
 const toGeoJSON = index.vectorTile.VectorTileFeature.prototype.toGeoJSON;
-class FeatureWrapper$1 {
+class FeatureWrapper {
     constructor(feature) {
         this._feature = feature;
         this.extent = index.EXTENT;
@@ -24027,7 +24006,7 @@ class FeatureWrapper$1 {
         return toGeoJSON.call(this, x, y, z);
     }
 }
-class GeoJSONWrapper$1 {
+class GeoJSONWrapper {
     constructor(features) {
         this.layers = { '_geojsonTileLayer': this };
         this.name = '_geojsonTileLayer';
@@ -24036,28 +24015,28 @@ class GeoJSONWrapper$1 {
         this._features = features;
     }
     feature(i) {
-        return new FeatureWrapper$1(this._features[i]);
+        return new FeatureWrapper(this._features[i]);
     }
 }
 
 var VectorTileFeature = index.vectorTile.VectorTileFeature;
-var geojson_wrapper = GeoJSONWrapper;
-function GeoJSONWrapper(features, options) {
+var geojson_wrapper = GeoJSONWrapper$1;
+function GeoJSONWrapper$1(features, options) {
     this.options = options || {};
     this.features = features;
     this.length = features.length;
 }
-GeoJSONWrapper.prototype.feature = function (i) {
-    return new FeatureWrapper(this.features[i], this.options.extent);
+GeoJSONWrapper$1.prototype.feature = function (i) {
+    return new FeatureWrapper$1(this.features[i], this.options.extent);
 };
-function FeatureWrapper(feature, extent) {
+function FeatureWrapper$1(feature, extent) {
     this.id = typeof feature.id === 'number' ? feature.id : undefined;
     this.type = feature.type;
     this.rawGeometry = feature.type === 1 ? [feature.geometry] : feature.geometry;
     this.properties = feature.tags;
     this.extent = extent || 4096;
 }
-FeatureWrapper.prototype.loadGeometry = function () {
+FeatureWrapper$1.prototype.loadGeometry = function () {
     var rings = this.rawGeometry;
     this.geometry = [];
     for (var i = 0; i < rings.length; i++) {
@@ -24070,7 +24049,7 @@ FeatureWrapper.prototype.loadGeometry = function () {
     }
     return this.geometry;
 };
-FeatureWrapper.prototype.bbox = function () {
+FeatureWrapper$1.prototype.bbox = function () {
     if (!this.geometry)
         this.loadGeometry();
     var rings = this.geometry;
@@ -24095,7 +24074,7 @@ FeatureWrapper.prototype.bbox = function () {
         y2
     ];
 };
-FeatureWrapper.prototype.toGeoJSON = VectorTileFeature.prototype.toGeoJSON;
+FeatureWrapper$1.prototype.toGeoJSON = VectorTileFeature.prototype.toGeoJSON;
 
 var vtPbf = fromVectorTileJs;
 var fromVectorTileJs_1 = fromVectorTileJs;
@@ -24162,14 +24141,16 @@ function writeProperties(context, pbf) {
     var keycache = context.keycache;
     var valuecache = context.valuecache;
     for (var key in feature.properties) {
+        var value = feature.properties[key];
         var keyIndex = keycache[key];
+        if (value === null)
+            continue;
         if (typeof keyIndex === 'undefined') {
             keys.push(key);
             keyIndex = keys.length - 1;
             keycache[key] = keyIndex;
         }
         pbf.writeVarint(keyIndex);
-        var value = feature.properties[key];
         var type = typeof value;
         if (type !== 'string' && type !== 'boolean' && type !== 'number') {
             value = JSON.stringify(value);
@@ -24425,7 +24406,7 @@ const fround = Math.fround || (tmp => x => {
 })(new Float32Array(1));
 class Supercluster {
     constructor(options) {
-        this.options = extend$1(Object.create(defaultOptions), options);
+        this.options = extend(Object.create(defaultOptions), options);
         this.trees = new Array(this.options.maxZoom + 1);
     }
     load(points) {
@@ -24623,7 +24604,7 @@ class Supercluster {
                 if (b.zoom > zoom)
                     numPoints += b.numPoints || 1;
             }
-            if (numPoints >= minPoints) {
+            if (numPoints > numPointsOrigin && numPoints >= minPoints) {
                 let wx = p.x * numPointsOrigin;
                 let wy = p.y * numPointsOrigin;
                 let clusterProperties = reduce && numPointsOrigin > 1 ? this._map(p, true) : null;
@@ -24668,11 +24649,11 @@ class Supercluster {
     }
     _map(point, clone) {
         if (point.numPoints) {
-            return clone ? extend$1({}, point.properties) : point.properties;
+            return clone ? extend({}, point.properties) : point.properties;
         }
         const original = this.points[point.index].properties;
         const result = this.options.map(original);
-        return clone && result === original ? extend$1({}, result) : result;
+        return clone && result === original ? extend({}, result) : result;
     }
 }
 function createCluster(x, y, id, numPoints, properties) {
@@ -24713,7 +24694,7 @@ function getClusterJSON(cluster) {
 function getClusterProperties(cluster) {
     const count = cluster.numPoints;
     const abbrev = count >= 10000 ? `${ Math.round(count / 1000) }k` : count >= 1000 ? `${ Math.round(count / 100) / 10 }k` : count;
-    return extend$1(extend$1({}, cluster.properties), {
+    return extend(extend({}, cluster.properties), {
         cluster: true,
         cluster_id: cluster.id,
         point_count: count,
@@ -24735,7 +24716,7 @@ function yLat(y) {
     const y2 = (180 - y * 360) * Math.PI / 180;
     return 360 * Math.atan(Math.exp(y2)) / Math.PI - 90;
 }
-function extend$1(dest, src) {
+function extend(dest, src) {
     for (const id in src)
         dest[id] = src[id];
     return dest;
@@ -25294,10 +25275,10 @@ function addLine(result, geom, tile, tolerance, isPolygon, isOuter) {
         tile.numPoints++;
     }
     if (isPolygon)
-        rewind(ring, isOuter);
+        rewind$1(ring, isOuter);
     result.push(ring);
 }
-function rewind(ring, clockwise) {
+function rewind$1(ring, clockwise) {
     var area = 0;
     for (var i = 0, len = ring.length, j = len - 2; i < len; j = i, i += 2) {
         area += (ring[i] - ring[j]) * (ring[i + 1] + ring[j + 1]);
@@ -25318,7 +25299,7 @@ function geojsonvt(data, options) {
     return new GeoJSONVT(data, options);
 }
 function GeoJSONVT(data, options) {
-    options = this.options = extend(Object.create(this.options), options);
+    options = this.options = extend$1(Object.create(this.options), options);
     var debug = options.debug;
     if (debug)
         console.time('preprocess data');
@@ -25461,7 +25442,7 @@ GeoJSONVT.prototype.getTile = function (z, x, y) {
 function toID(z, x, y) {
     return ((1 << z) * y + x) * 32 + z;
 }
-function extend(dest, src) {
+function extend$1(dest, src) {
     for (var i in src)
         dest[i] = src[i];
     return dest;
@@ -25476,7 +25457,7 @@ function loadGeoJSONTile(params, callback) {
     if (!geoJSONTile) {
         return callback(null, null);
     }
-    const geojsonWrapper = new GeoJSONWrapper$1(geoJSONTile.features);
+    const geojsonWrapper = new GeoJSONWrapper(geoJSONTile.features);
     let pbf = vtPbf(geojsonWrapper);
     if (pbf.byteOffset !== 0 || pbf.byteLength !== pbf.buffer.byteLength) {
         pbf = new Uint8Array(pbf);
@@ -26050,7 +26031,7 @@ function getScaledPoint(el, rect, e) {
     return new index.pointGeometry((e.clientX - rect.left) * scaling, (e.clientY - rect.top) * scaling);
 }
 
-function create$1() {
+function create() {
     var out = new index.ARRAY_TYPE(4);
     if (index.ARRAY_TYPE != Float32Array) {
         out[1] = 0;
@@ -26073,7 +26054,7 @@ function invert(out, a) {
     out[3] = a0 * det;
     return out;
 }
-function rotate$1(out, a, rad) {
+function rotate(out, a, rad) {
     var a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
     var s = Math.sin(rad);
     var c = Math.cos(rad);
@@ -26714,17 +26695,17 @@ class LightPositionProperty {
         };
     }
 }
-const properties$1 = new index.Properties({
+const properties = new index.Properties({
     'anchor': new index.DataConstantProperty(index.spec.light.anchor),
     'position': new LightPositionProperty(),
     'color': new index.DataConstantProperty(index.spec.light.color),
     'intensity': new index.DataConstantProperty(index.spec.light.intensity)
 });
-const TRANSITION_SUFFIX$2 = '-transition';
+const TRANSITION_SUFFIX = '-transition';
 class Light extends index.Evented {
     constructor(lightOptions) {
         super();
-        this._transitionable = new index.Transitionable(properties$1);
+        this._transitionable = new index.Transitionable(properties);
         this.setLight(lightOptions);
         this._transitioning = this._transitionable.untransitioned();
     }
@@ -26737,8 +26718,8 @@ class Light extends index.Evented {
         }
         for (const name in light) {
             const value = light[name];
-            if (index.endsWith(name, TRANSITION_SUFFIX$2)) {
-                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX$2.length), value);
+            if (index.endsWith(name, TRANSITION_SUFFIX)) {
+                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX.length), value);
             } else {
                 this._transitionable.setValue(name, value);
             }
@@ -26768,15 +26749,15 @@ class Light extends index.Evented {
     }
 }
 
-const properties = new index.Properties({
+const properties$1 = new index.Properties({
     'source': new index.DataConstantProperty(index.spec.terrain.source),
     'exaggeration': new index.DataConstantProperty(index.spec.terrain.exaggeration)
 });
 const TRANSITION_SUFFIX$1 = '-transition';
-class Terrain$1 extends index.Evented {
+class Terrain extends index.Evented {
     constructor(terrainOptions) {
         super();
-        this._transitionable = new index.Transitionable(properties);
+        this._transitionable = new index.Transitionable(properties$1);
         this.set(terrainOptions);
         this._transitioning = this._transitionable.untransitioned();
     }
@@ -26852,7 +26833,7 @@ const fogProperties = new index.Properties({
     'color': new index.DataConstantProperty(index.spec.fog.color),
     'horizon-blend': new index.DataConstantProperty(index.spec.fog['horizon-blend'])
 });
-const TRANSITION_SUFFIX = '-transition';
+const TRANSITION_SUFFIX$2 = '-transition';
 class Fog extends index.Evented {
     constructor(fogOptions, transform) {
         super();
@@ -26880,8 +26861,8 @@ class Fog extends index.Evented {
         }
         for (const name in fog) {
             const value = fog[name];
-            if (index.endsWith(name, TRANSITION_SUFFIX)) {
-                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX.length), value);
+            if (index.endsWith(name, TRANSITION_SUFFIX$2)) {
+                this._transitionable.setTransition(name.slice(0, -TRANSITION_SUFFIX$2.length), value);
             } else {
                 this._transitionable.setValue(name, value);
             }
@@ -27544,7 +27525,7 @@ class FrontFace extends BaseValue {
         this.dirty = false;
     }
 }
-class Program$1 extends BaseValue {
+class Program extends BaseValue {
     getDefault() {
         return null;
     }
@@ -27798,7 +27779,7 @@ class Context {
         this.cullFace = new CullFace(this);
         this.cullFaceSide = new CullFaceSide(this);
         this.frontFace = new FrontFace(this);
-        this.program = new Program$1(this);
+        this.program = new Program(this);
         this.activeTexture = new ActiveTextureUnit(this);
         this.viewport = new Viewport(this);
         this.bindFramebuffer = new BindFramebuffer(this);
@@ -28966,7 +28947,7 @@ const sourceTypes = {
     image: ImageSource,
     canvas: CanvasSource
 };
-const create = function (id, specification, dispatcher, eventedParent) {
+const create$1 = function (id, specification, dispatcher, eventedParent) {
     const source = new sourceTypes[specification.type](id, specification, dispatcher, eventedParent);
     if (source.id !== id) {
         throw new Error(`Expected Source id to be ${ id } instead of ${ source.id }`);
@@ -32007,7 +31988,7 @@ class Style extends index.Evented {
             return;
         if (this.map && this.map._collectResourceTiming)
             source.collectResourceTiming = true;
-        const sourceInstance = create(id, source, this.dispatcher, this);
+        const sourceInstance = create$1(id, source, this.dispatcher, this);
         sourceInstance.setEventedParent(this, () => ({
             isSourceLoaded: this.loaded(),
             source: sourceInstance.serialize(),
@@ -32615,7 +32596,7 @@ class Style extends index.Evented {
         this._drapedFirstOrder.push(...nonDraped);
     }
     _createTerrain(terrainOptions) {
-        const terrain = this.terrain = new Terrain$1(terrainOptions);
+        const terrain = this.terrain = new Terrain(terrainOptions);
         this.stylesheet.terrain = terrainOptions;
         this.dispatcher.broadcast('enableTerrain', true);
         this._force3DLayerUpdate();
@@ -33581,7 +33562,7 @@ const FBO_POOL_SIZE = 5;
 const RENDER_CACHE_MAX_SIZE = 50;
 class ProxySourceCache extends index.SourceCache {
     constructor(map) {
-        const source = create('proxy', {
+        const source = create$1('proxy', {
             type: 'geojson',
             maxzoom: map.transform.maxZoom
         }, new Dispatcher(getGlobalWorkerPool(), null), map.style);
@@ -33644,7 +33625,7 @@ class ProxiedTileID extends index.OverscaledTileID {
         this.projMatrix = projMatrix;
     }
 }
-class Terrain extends index.Elevation {
+class Terrain$1 extends index.Elevation {
     constructor(painter, style) {
         super();
         this.painter = painter;
@@ -34826,7 +34807,7 @@ function getTokenizedAttributesAndUniforms(array) {
     }
     return result;
 }
-class Program {
+class Program$1 {
     static cacheKey(name, defines, programConfiguration) {
         let key = `${ name }${ programConfiguration ? programConfiguration.cacheKey : '' }`;
         for (const define of defines) {
@@ -36274,7 +36255,7 @@ function drawFillTiles(painter, sourceCache, layer, coords, depthMode, colorMode
     }
 }
 
-function draw$1(painter, source, layer, coords) {
+function draw(painter, source, layer, coords) {
     const opacity = layer.paint.get('fill-extrusion-opacity');
     if (opacity === 0) {
         return;
@@ -36898,13 +36879,13 @@ function captureSkybox(painter, layer, width, height) {
     ]);
 }
 
-const draw = {
+const draw$1 = {
     symbol: drawSymbols,
     circle: drawCircles,
     heatmap: drawHeatmap,
     line: drawLine,
     fill: drawFill,
-    'fill-extrusion': draw$1,
+    'fill-extrusion': draw,
     hillshade: drawHillshade,
     raster: drawRaster,
     background: drawBackground,
@@ -36933,7 +36914,7 @@ class Painter {
         if (!enabled && (!this._terrain || !this._terrain.enabled))
             return;
         if (!this._terrain) {
-            this._terrain = new Terrain(this, style);
+            this._terrain = new Terrain$1(this, style);
         }
         const terrain = this._terrain;
         this.transform.elevation = enabled ? terrain : null;
@@ -37307,7 +37288,7 @@ class Painter {
             });
             if (selectedSource) {
                 if (this.options.showTileBoundaries) {
-                    draw.debug(this, selectedSource, selectedSource.getVisibleCoordinates());
+                    draw$1.debug(this, selectedSource, selectedSource.getVisibleCoordinates());
                 }
             }
         }
@@ -37328,7 +37309,7 @@ class Painter {
             return;
         this.id = layer.id;
         this.gpuTimingStart(layer);
-        draw[layer.type](painter, sourceCache, layer, coords, this.style.placement.variableOffsets, this.options.isInitialLoad);
+        draw$1[layer.type](painter, sourceCache, layer, coords, this.style.placement.variableOffsets, this.options.isInitialLoad);
         this.gpuTimingEnd();
     }
     gpuTimingStart(layer) {
@@ -37431,9 +37412,9 @@ class Painter {
         const defines = fixedDefines || [];
         const globalDefines = this.currentGlobalDefines();
         const allDefines = globalDefines.concat(defines);
-        const key = Program.cacheKey(name, allDefines, programConfiguration);
+        const key = Program$1.cacheKey(name, allDefines, programConfiguration);
         if (!this.cache[key]) {
-            this.cache[key] = new Program(this.context, name, shaders[name], programConfiguration, programUniforms[name], allDefines);
+            this.cache[key] = new Program$1(this.context, name, shaders[name], programConfiguration, programUniforms[name], allDefines);
         }
         return this.cache[key];
     }
@@ -37878,14 +37859,14 @@ function getShearAdjustment(projection, zoom, loc, interpT, withoutRotation) {
     const p3 = projection.project(loc3.lng, loc3.lat);
     const pdx3 = p3.x - p2.x;
     const pdy3 = p3.y - p2.y;
-    const delta3 = rotate(pdx3, pdy3, angleAdjust);
+    const delta3 = rotate$1(pdx3, pdy3, angleAdjust);
     const mc4 = index.MercatorCoordinate.fromLngLat(loc2);
     mc4.y += offset;
     const loc4 = mc4.toLngLat();
     const p4 = projection.project(loc4.lng, loc4.lat);
     const pdx4 = p4.x - p2.x;
     const pdy4 = p4.y - p2.y;
-    const delta4 = rotate(pdx4, pdy4, angleAdjust);
+    const delta4 = rotate$1(pdx4, pdy4, angleAdjust);
     const scale = Math.abs(delta3.x) / Math.abs(delta4.y);
     const unrotate = index.identity([]);
     index.rotateZ(unrotate, unrotate, -angleAdjust * (1 - (withoutRotation ? 0 : interpT)));
@@ -37900,7 +37881,7 @@ function getShearAdjustment(projection, zoom, loc, interpT, withoutRotation) {
     index.multiply(shear, unrotate, shear);
     return shear;
 }
-function rotate(x, y, angle) {
+function rotate$1(x, y, angle) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return {
@@ -38091,8 +38072,8 @@ class Transform {
         this._unmodified = false;
         this.angle = b;
         this._calcMatrices();
-        this.rotationMatrix = create$1();
-        rotate$1(this.rotationMatrix, this.rotationMatrix, this.angle);
+        this.rotationMatrix = create();
+        rotate(this.rotationMatrix, this.rotationMatrix, this.angle);
     }
     get pitch() {
         return this._pitch / Math.PI * 180;
@@ -40439,14 +40420,14 @@ class TouchPitchHandler extends TwoTouchHandler {
     }
 }
 
-const defaultOptions$5 = {
+const defaultOptions = {
     panStep: 100,
     bearingStep: 15,
     pitchStep: 10
 };
 class KeyboardHandler {
     constructor() {
-        const stepOptions = defaultOptions$5;
+        const stepOptions = defaultOptions;
         this._panStep = stepOptions.panStep;
         this._bearingStep = stepOptions.bearingStep;
         this._pitchStep = stepOptions.pitchStep;
@@ -43044,7 +43025,7 @@ const defaultMinZoom = -2;
 const defaultMaxZoom = 22;
 const defaultMinPitch = 0;
 const defaultMaxPitch = 85;
-const defaultOptions$4 = {
+const defaultOptions$1 = {
     center: [
         0,
         0
@@ -43088,7 +43069,7 @@ const defaultOptions$4 = {
 };
 class Map extends Camera {
     constructor(options) {
-        options = index.extend({}, defaultOptions$4, options);
+        options = index.extend({}, defaultOptions$1, options);
         if (options.minZoom != null && options.maxZoom != null && options.minZoom > options.maxZoom) {
             throw new Error(`maxZoom must be greater than or equal to minZoom`);
         }
@@ -44328,14 +44309,14 @@ function removeNode(node) {
     }
 }
 
-const defaultOptions$3 = {
+const defaultOptions$2 = {
     showCompass: true,
     showZoom: true,
     visualizePitch: false
 };
 class NavigationControl {
     constructor(options) {
-        this.options = index.extend({}, defaultOptions$3, options);
+        this.options = index.extend({}, defaultOptions$2, options);
         this._container = DOM.create('div', 'mapboxgl-ctrl mapboxgl-ctrl-group');
         this._container.addEventListener('contextmenu', e => e.preventDefault());
         if (this.options.showZoom) {
@@ -44533,7 +44514,7 @@ class MouseRotateWrapper {
     }
 }
 
-const defaultOptions$2 = {
+const defaultOptions$3 = {
     positionOptions: {
         enableHighAccuracy: false,
         maximumAge: 0,
@@ -44564,7 +44545,7 @@ let noTimeout = false;
 class GeolocateControl extends index.Evented {
     constructor(options) {
         super();
-        this.options = index.extend({}, defaultOptions$2, options);
+        this.options = index.extend({}, defaultOptions$3, options);
         index.bindAll([
             '_onSuccess',
             '_onError',
@@ -44934,13 +44915,13 @@ class GeolocateControl extends index.Evented {
     }
 }
 
-const defaultOptions$1 = {
+const defaultOptions$4 = {
     maxWidth: 100,
     unit: 'metric'
 };
 class ScaleControl {
     constructor(options) {
-        this.options = index.extend({}, defaultOptions$1, options);
+        this.options = index.extend({}, defaultOptions$4, options);
         index.bindAll([
             '_onMove',
             'setUnit'
@@ -45102,7 +45083,7 @@ class FullscreenControl {
     }
 }
 
-const defaultOptions = {
+const defaultOptions$5 = {
     closeButton: true,
     closeOnClick: true,
     focusAfterOpen: true,
@@ -45121,7 +45102,7 @@ const focusQuerySelector = [
 class Popup extends index.Evented {
     constructor(options) {
         super();
-        this.options = index.extend(Object.create(defaultOptions), options);
+        this.options = index.extend(Object.create(defaultOptions$5), options);
         index.bindAll([
             '_update',
             '_onClose',

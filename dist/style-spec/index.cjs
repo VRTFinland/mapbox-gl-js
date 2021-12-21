@@ -2642,7 +2642,7 @@
   	length: 2,
   	doc: "Zoom level and value pair."
   };
-  var expression$1 = {
+  var expression = {
   	type: "array",
   	value: "*",
   	minimum: 1,
@@ -6323,7 +6323,7 @@
   	}
   },
   	function_stop: function_stop,
-  	expression: expression$1,
+  	expression: expression,
   	expression_name: expression_name,
   	fog: fog,
   	light: light,
@@ -6711,7 +6711,7 @@
       }
       return result;
   }
-  function format$1(style, space = 2) {
+  function format(style, space = 2) {
       style = sortKeysBy(style, v8.$root);
       if (style.layers) {
           style.layers = style.layers.map(layer => sortKeysBy(layer, v8.layer));
@@ -7384,7 +7384,7 @@
   var parse = urlParse;
   var resolve = urlResolve;
   var resolveObject = urlResolveObject;
-  var format = urlFormat;
+  var format$1 = urlFormat;
 
   var Url_1 = Url;
 
@@ -8091,7 +8091,7 @@
   	parse: parse,
   	resolve: resolve,
   	resolveObject: resolveObject,
-  	format: format,
+  	format: format$1,
   	Url: Url_1
   };
 
@@ -8172,7 +8172,7 @@
           return value;
       }
   }
-  function isFunction$1(value) {
+  function isFunction(value) {
       return Array.isArray(value.stops);
   }
   function renameProperty(obj, from, to) {
@@ -8214,7 +8214,7 @@
           layout: true
       }, property => {
           const value = resolveConstant(style, property.value);
-          if (isFunction$1(value)) {
+          if (isFunction(value)) {
               value.stops.forEach(stop => {
                   stop[1] = resolveConstant(style, stop[1]);
               });
@@ -8305,7 +8305,7 @@
       return output;
   }
 
-  class ParsingError$1 extends Error {
+  class ParsingError extends Error {
       constructor(key, message) {
           super(message);
           this.message = message;
@@ -8351,16 +8351,16 @@
   const CollatorType = { kind: 'collator' };
   const FormattedType = { kind: 'formatted' };
   const ResolvedImageType = { kind: 'resolvedImage' };
-  function array$1(itemType, N) {
+  function array(itemType, N) {
       return {
           kind: 'array',
           itemType,
           N
       };
   }
-  function toString$1(type) {
+  function toString(type) {
       if (type.kind === 'array') {
-          const itemType = toString$1(type.itemType);
+          const itemType = toString(type.itemType);
           return typeof type.N === 'number' ? `array<${ itemType }, ${ type.N }>` : type.itemType.kind === 'value' ? 'array' : `array<${ itemType }>`;
       } else {
           return type.kind;
@@ -8374,7 +8374,7 @@
       ColorType,
       FormattedType,
       ObjectType,
-      array$1(ValueType),
+      array(ValueType),
       ResolvedImageType
   ];
   function checkSubtype(expected, t) {
@@ -8393,7 +8393,7 @@
               }
           }
       }
-      return `Expected ${ toString$1(expected) } but found ${ toString$1(t) } instead.`;
+      return `Expected ${ toString(expected) } but found ${ toString(t) } instead.`;
   }
   function isValidType(provided, allowedTypes) {
       return allowedTypes.some(t => t.kind === provided.kind);
@@ -8861,12 +8861,12 @@
                   break;
               }
           }
-          return array$1(itemType || ValueType, length);
+          return array(itemType || ValueType, length);
       } else {
           return ObjectType;
       }
   }
-  function toString(value) {
+  function toString$1(value) {
       const type = typeof value;
       if (value === null) {
           return '';
@@ -8931,7 +8931,7 @@
       }
   }
 
-  const types$1 = {
+  const types = {
       string: StringType,
       number: NumberType,
       boolean: BooleanType,
@@ -8952,9 +8952,9 @@
               let itemType;
               if (args.length > 2) {
                   const type = args[1];
-                  if (typeof type !== 'string' || !(type in types$1) || type === 'object')
+                  if (typeof type !== 'string' || !(type in types) || type === 'object')
                       return context.error('The item type argument of "array" must be one of string, number, boolean', 1);
-                  itemType = types$1[type];
+                  itemType = types[type];
                   i++;
               } else {
                   itemType = ValueType;
@@ -8967,9 +8967,9 @@
                   N = args[2];
                   i++;
               }
-              type = array$1(itemType, N);
+              type = array(itemType, N);
           } else {
-              type = types$1[name];
+              type = types[name];
           }
           const parsed = [];
           for (; i < args.length; i++) {
@@ -8987,7 +8987,7 @@
               if (!error) {
                   return value;
               } else if (i === this.args.length - 1) {
-                  throw new RuntimeError(`Expected value to be of type ${ toString$1(this.type) }, but found ${ toString$1(typeOf(value)) } instead.`);
+                  throw new RuntimeError(`Expected value to be of type ${ toString(this.type) }, but found ${ toString(typeOf(value)) } instead.`);
               }
           }
           return null;
@@ -9042,7 +9042,7 @@
                   }
                   let font = null;
                   if (arg['text-font']) {
-                      font = context.parse(arg['text-font'], 1, array$1(StringType));
+                      font = context.parse(arg['text-font'], 1, array(StringType));
                       if (!font)
                           return null;
                   }
@@ -9080,7 +9080,7 @@
               if (typeOf(evaluatedContent) === ResolvedImageType) {
                   return new FormattedSection('', evaluatedContent, null, null, null);
               }
-              return new FormattedSection(toString(evaluatedContent), null, section.scale ? section.scale.evaluate(ctx) : null, section.font ? section.font.evaluate(ctx).join(',') : null, section.textColor ? section.textColor.evaluate(ctx) : null);
+              return new FormattedSection(toString$1(evaluatedContent), null, section.scale ? section.scale.evaluate(ctx) : null, section.font ? section.font.evaluate(ctx).join(',') : null, section.textColor ? section.textColor.evaluate(ctx) : null);
           };
           return new Formatted(this.sections.map(evaluateSection));
       }
@@ -9156,7 +9156,7 @@
       }
   }
 
-  const types = {
+  const types$1 = {
       'to-boolean': BooleanType,
       'to-color': ColorType,
       'to-number': NumberType,
@@ -9173,7 +9173,7 @@
           const name = args[0];
           if ((name === 'to-boolean' || name === 'to-string') && args.length !== 2)
               return context.error(`Expected one argument.`);
-          const type = types[name];
+          const type = types$1[name];
           const parsed = [];
           for (let i = 1; i < args.length; i++) {
               const input = context.parse(args[i], i, ValueType);
@@ -9223,11 +9223,11 @@
               }
               throw new RuntimeError(`Could not convert ${ JSON.stringify(value) } to number.`);
           } else if (this.type.kind === 'formatted') {
-              return Formatted.fromString(toString(this.args[0].evaluate(ctx)));
+              return Formatted.fromString(toString$1(this.args[0].evaluate(ctx)));
           } else if (this.type.kind === 'resolvedImage') {
-              return ResolvedImage.fromString(toString(this.args[0].evaluate(ctx)));
+              return ResolvedImage.fromString(toString$1(this.args[0].evaluate(ctx)));
           } else {
-              return toString(this.args[0].evaluate(ctx));
+              return toString$1(this.args[0].evaluate(ctx));
           }
       }
       eachChild(fn) {
@@ -9386,7 +9386,7 @@
                   const parsed = context.parse(args[i], 1 + actualTypes.length);
                   if (!parsed)
                       return null;
-                  actualTypes.push(toString$1(parsed.type));
+                  actualTypes.push(toString(parsed.type));
               }
               context.error(`Expected arguments of type ${ signatures }, but found (${ actualTypes.join(', ') }) instead.`);
           }
@@ -9401,9 +9401,9 @@
   }
   function stringifySignature(signature) {
       if (Array.isArray(signature)) {
-          return `(${ signature.map(toString$1).join(', ') })`;
+          return `(${ signature.map(toString).join(', ') })`;
       } else {
-          return `(${ toString$1(signature.type) }...)`;
+          return `(${ toString(signature.type) }...)`;
       }
   }
 
@@ -9959,7 +9959,7 @@
       }
       error(error, ...keys) {
           const key = `${ this.key }${ keys.map(k => `[${ k }]`).join('') }`;
-          this.errors.push(new ParsingError$1(key, error));
+          this.errors.push(new ParsingError(key, error));
       }
       checkSubtype(expected, t) {
           const error = checkSubtype(expected, t);
@@ -10226,7 +10226,7 @@
   function color(from, to, t) {
       return new Color(number(from.r, to.r, t), number(from.g, to.g, t), number(from.b, to.b, t), number(from.a, to.a, t));
   }
-  function array(from, to, t) {
+  function array$1(from, to, t) {
       return from.map((d, i) => {
           return number(d, to[i], t);
       });
@@ -10236,7 +10236,7 @@
     __proto__: null,
     number: number,
     color: color,
-    array: array
+    array: array$1
   });
 
   const Xn = 0.95047, Yn = 1, Zn = 1.08883, t0 = 4 / 29, t1 = 6 / 29, t2 = 3 * t1 * t1, t3 = t1 * t1 * t1, deg2rad = Math.PI / 180, rad2deg = 180 / Math.PI;
@@ -10415,7 +10415,7 @@
               ]);
           }
           if (outputType.kind !== 'number' && outputType.kind !== 'color' && !(outputType.kind === 'array' && outputType.itemType.kind === 'number' && typeof outputType.N === 'number')) {
-              return context.error(`Type ${ toString$1(outputType) } is not interpolatable.`);
+              return context.error(`Type ${ toString(outputType) } is not interpolatable.`);
           }
           return new Interpolate(outputType, operator, interpolation, input, stops);
       }
@@ -10619,7 +10619,7 @@
           if (args.length !== 3)
               return context.error(`Expected 2 arguments, but found ${ args.length - 1 } instead.`);
           const index = context.parse(args[1], 1, NumberType);
-          const input = context.parse(args[2], 2, array$1(context.expectedType || ValueType));
+          const input = context.parse(args[2], 2, array(context.expectedType || ValueType));
           if (!index || !input)
               return null;
           const t = input.type;
@@ -10676,7 +10676,7 @@
                   NullType,
                   ValueType
               ])) {
-              return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(needle.type) } instead`);
+              return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(needle.type) } instead`);
           }
           return new In(needle, haystack);
       }
@@ -10691,13 +10691,13 @@
                   'number',
                   'null'
               ])) {
-              throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(typeOf(needle)) } instead.`);
+              throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(typeOf(needle)) } instead.`);
           }
           if (!isValidNativeType(haystack, [
                   'string',
                   'array'
               ])) {
-              throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString$1(typeOf(haystack)) } instead.`);
+              throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString(typeOf(haystack)) } instead.`);
           }
           return haystack.indexOf(needle) >= 0;
       }
@@ -10739,7 +10739,7 @@
                   NullType,
                   ValueType
               ])) {
-              return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(needle.type) } instead`);
+              return context.error(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(needle.type) } instead`);
           }
           if (args.length === 4) {
               const fromIndex = context.parse(args[3], 3, NumberType);
@@ -10759,13 +10759,13 @@
                   'number',
                   'null'
               ])) {
-              throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString$1(typeOf(needle)) } instead.`);
+              throw new RuntimeError(`Expected first argument to be of type boolean, string, number or null, but found ${ toString(typeOf(needle)) } instead.`);
           }
           if (!isValidNativeType(haystack, [
                   'string',
                   'array'
               ])) {
-              throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString$1(typeOf(haystack)) } instead.`);
+              throw new RuntimeError(`Expected second argument to be of type array or string, but found ${ toString(typeOf(haystack)) } instead.`);
           }
           if (this.fromIndex) {
               const fromIndex = this.fromIndex.evaluate(ctx);
@@ -10990,11 +10990,11 @@
           if (!input || !beginIndex)
               return null;
           if (!isValidType(input.type, [
-                  array$1(ValueType),
+                  array(ValueType),
                   StringType,
                   ValueType
               ])) {
-              return context.error(`Expected first argument to be of type array or string, but found ${ toString$1(input.type) } instead`);
+              return context.error(`Expected first argument to be of type array or string, but found ${ toString(input.type) } instead`);
           }
           if (args.length === 4) {
               const endIndex = context.parse(args[3], 3, NumberType);
@@ -11012,7 +11012,7 @@
                   'string',
                   'array'
               ])) {
-              throw new RuntimeError(`Expected first argument to be of type array or string, but found ${ toString$1(typeOf(input)) } instead.`);
+              throw new RuntimeError(`Expected first argument to be of type array or string, but found ${ toString(typeOf(input)) } instead.`);
           }
           if (this.endIndex) {
               const endIndex = this.endIndex.evaluate(ctx);
@@ -11109,16 +11109,16 @@
               if (!lhs)
                   return null;
               if (!isComparableType(op, lhs.type)) {
-                  return context.concat(1).error(`"${ op }" comparisons are not supported for type '${ toString$1(lhs.type) }'.`);
+                  return context.concat(1).error(`"${ op }" comparisons are not supported for type '${ toString(lhs.type) }'.`);
               }
               let rhs = context.parse(args[2], 2, ValueType);
               if (!rhs)
                   return null;
               if (!isComparableType(op, rhs.type)) {
-                  return context.concat(2).error(`"${ op }" comparisons are not supported for type '${ toString$1(rhs.type) }'.`);
+                  return context.concat(2).error(`"${ op }" comparisons are not supported for type '${ toString(rhs.type) }'.`);
               }
               if (lhs.type.kind !== rhs.type.kind && lhs.type.kind !== 'value' && rhs.type.kind !== 'value') {
-                  return context.error(`Cannot compare types '${ toString$1(lhs.type) }' and '${ toString$1(rhs.type) }'.`);
+                  return context.error(`Cannot compare types '${ toString(lhs.type) }' and '${ toString(rhs.type) }'.`);
               }
               if (isOrderComparison) {
                   if (lhs.type.kind === 'value' && rhs.type.kind !== 'value') {
@@ -11287,7 +11287,7 @@
           if (!input)
               return null;
           if (input.type.kind !== 'array' && input.type.kind !== 'string' && input.type.kind !== 'value')
-              return context.error(`Expected argument of type string or array, but found ${ toString$1(input.type) } instead.`);
+              return context.error(`Expected argument of type string or array, but found ${ toString(input.type) } instead.`);
           return new Length(input);
       }
       evaluate(ctx) {
@@ -11297,7 +11297,7 @@
           } else if (Array.isArray(input)) {
               return input.length;
           } else {
-              throw new RuntimeError(`Expected value to be of type string or array, but found ${ toString$1(typeOf(input)) } instead.`);
+              throw new RuntimeError(`Expected value to be of type string or array, but found ${ toString(typeOf(input)) } instead.`);
           }
       }
       eachChild(fn) {
@@ -11395,10 +11395,10 @@
       'typeof': [
           StringType,
           [ValueType],
-          (ctx, [v]) => toString$1(typeOf(v.evaluate(ctx)))
+          (ctx, [v]) => toString(typeOf(v.evaluate(ctx)))
       ],
       'to-rgba': [
-          array$1(NumberType, 4),
+          array(NumberType, 4),
           [ColorType],
           (ctx, [v]) => {
               return v.evaluate(ctx).toArray();
@@ -11784,19 +11784,19 @@
       ],
       'filter-type-in': [
           BooleanType,
-          [array$1(StringType)],
+          [array(StringType)],
           (ctx, [v]) => v.value.indexOf(ctx.geometryType()) >= 0
       ],
       'filter-id-in': [
           BooleanType,
-          [array$1(ValueType)],
+          [array(ValueType)],
           (ctx, [v]) => v.value.indexOf(ctx.id()) >= 0
       ],
       'filter-in-small': [
           BooleanType,
           [
               StringType,
-              array$1(ValueType)
+              array(ValueType)
           ],
           (ctx, [k, v]) => v.value.indexOf(ctx.properties()[k.value]) >= 0
       ],
@@ -11804,7 +11804,7 @@
           BooleanType,
           [
               StringType,
-              array$1(ValueType)
+              array(ValueType)
           ],
           (ctx, [k, v]) => binarySearch(ctx.properties()[k.value], v.value, 0, v.value.length - 1)
       ],
@@ -11881,7 +11881,7 @@
       'concat': [
           StringType,
           varargs(ValueType),
-          (ctx, args) => args.map(arg => toString(arg.evaluate(ctx))).join('')
+          (ctx, args) => args.map(arg => toString$1(arg.evaluate(ctx))).join('')
       ],
       'resolved-locale': [
           StringType,
@@ -11929,7 +11929,7 @@
       }
   }
 
-  function isFunction(value) {
+  function isFunction$1(value) {
       return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
   function identityFunction(x) {
@@ -12038,14 +12038,14 @@
               evaluate(_, feature) {
                   const value = feature && feature.properties ? feature.properties[parameters.property] : undefined;
                   if (value === undefined) {
-                      return coalesce$1(parameters.default, propertySpec.default);
+                      return coalesce(parameters.default, propertySpec.default);
                   }
                   return innerFun(parameters, propertySpec, value, hashedStops, categoricalKeyType);
               }
           };
       }
   }
-  function coalesce$1(a, b, c) {
+  function coalesce(a, b, c) {
       if (a !== undefined)
           return a;
       if (b !== undefined)
@@ -12055,11 +12055,11 @@
   }
   function evaluateCategoricalFunction(parameters, propertySpec, input, hashedStops, keyType) {
       const evaluated = typeof input === keyType ? hashedStops[input] : undefined;
-      return coalesce$1(evaluated, parameters.default, propertySpec.default);
+      return coalesce(evaluated, parameters.default, propertySpec.default);
   }
   function evaluateIntervalFunction(parameters, propertySpec, input) {
       if (getType(input) !== 'number')
-          return coalesce$1(parameters.default, propertySpec.default);
+          return coalesce(parameters.default, propertySpec.default);
       const n = parameters.stops.length;
       if (n === 1)
           return parameters.stops[0][1];
@@ -12073,7 +12073,7 @@
   function evaluateExponentialFunction(parameters, propertySpec, input) {
       const base = parameters.base !== undefined ? parameters.base : 1;
       if (getType(input) !== 'number')
-          return coalesce$1(parameters.default, propertySpec.default);
+          return coalesce(parameters.default, propertySpec.default);
       const n = parameters.stops.length;
       if (n === 1)
           return parameters.stops[0][1];
@@ -12114,7 +12114,7 @@
       } else if (getType(input) !== propertySpec.type && (propertySpec.type !== 'enum' || !propertySpec.values[input])) {
           input = undefined;
       }
-      return coalesce$1(input, parameters.default, propertySpec.default);
+      return coalesce(input, parameters.default, propertySpec.default);
   }
   function interpolationFactor(input, base, lowerValue, upperValue) {
       const difference = upperValue - lowerValue;
@@ -12230,7 +12230,7 @@
       const parsed = expression.value.expression;
       const isFeatureConstant$1 = isFeatureConstant(parsed);
       if (!isFeatureConstant$1 && !supportsPropertyExpression(propertySpec)) {
-          return error([new ParsingError$1('', 'data expressions not supported')]);
+          return error([new ParsingError('', 'data expressions not supported')]);
       }
       const isZoomConstant = isGlobalPropertyConstant(parsed, [
           'zoom',
@@ -12238,15 +12238,15 @@
           'distance-from-center'
       ]);
       if (!isZoomConstant && !supportsZoomExpression(propertySpec)) {
-          return error([new ParsingError$1('', 'zoom expressions not supported')]);
+          return error([new ParsingError('', 'zoom expressions not supported')]);
       }
       const zoomCurve = findZoomCurve(parsed);
       if (!zoomCurve && !isZoomConstant) {
-          return error([new ParsingError$1('', '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.')]);
-      } else if (zoomCurve instanceof ParsingError$1) {
+          return error([new ParsingError('', '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.')]);
+      } else if (zoomCurve instanceof ParsingError) {
           return error([zoomCurve]);
       } else if (zoomCurve instanceof Interpolate && !supportsInterpolation(propertySpec)) {
-          return error([new ParsingError$1('', '"interpolate" expressions cannot be used with this property')]);
+          return error([new ParsingError('', '"interpolate" expressions cannot be used with this property')]);
       }
       if (!zoomCurve) {
           return success(isFeatureConstant$1 ? new ZoomConstantExpression('constant', expression.value) : new ZoomConstantExpression('source', expression.value));
@@ -12271,7 +12271,7 @@
       }
   }
   function normalizePropertyExpression(value, specification) {
-      if (isFunction(value)) {
+      if (isFunction$1(value)) {
           return new StylePropertyFunction(value, specification);
       } else if (isExpression(value)) {
           const expression = createPropertyExpression(value, specification);
@@ -12304,17 +12304,17 @@
       } else if ((expression instanceof Step || expression instanceof Interpolate) && expression.input instanceof CompoundExpression && expression.input.name === 'zoom') {
           result = expression;
       }
-      if (result instanceof ParsingError$1) {
+      if (result instanceof ParsingError) {
           return result;
       }
       expression.eachChild(child => {
           const childResult = findZoomCurve(child);
-          if (childResult instanceof ParsingError$1) {
+          if (childResult instanceof ParsingError) {
               result = childResult;
           } else if (!result && childResult) {
-              result = new ParsingError$1('', '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.');
+              result = new ParsingError('', '"zoom" expression may only be used as input to a top-level "step" or "interpolate" expression.');
           } else if (result && childResult && result !== childResult) {
-              result = new ParsingError$1('', 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.');
+              result = new ParsingError('', 'Only one zoom-based "step" or "interpolate" subexpression may be used in an expression.');
           }
       });
       return result;
@@ -12330,12 +12330,12 @@
           resolvedImage: ResolvedImageType
       };
       if (spec.type === 'array') {
-          return array$1(types[spec.value] || ValueType, spec.length);
+          return array(types[spec.value] || ValueType, spec.length);
       }
       return types[spec.type];
   }
   function getDefaultValue(spec) {
-      if (spec.type === 'color' && isFunction(spec.default)) {
+      if (spec.type === 'color' && isFunction$1(spec.default)) {
           return new Color(0, 0, 0, 0);
       } else if (spec.type === 'color') {
           return Color.parse(spec.default) || null;
@@ -12467,14 +12467,14 @@
           return expression;
       }
   }
-  function coalesce(a, b) {
+  function coalesce$1(a, b) {
       if (a !== undefined)
           return a;
       if (b !== undefined)
           return b;
   }
   function getFallback(parameters, propertySpec) {
-      const defaultValue = convertLiteral(coalesce(parameters.default, propertySpec.default));
+      const defaultValue = convertLiteral(coalesce$1(parameters.default, propertySpec.default));
       if (defaultValue === undefined && propertySpec.type === 'resolvedImage') {
           return '';
       }
@@ -12708,7 +12708,7 @@
           };
       }
       if (!isExpressionFilter(filter)) {
-          filter = convertFilter$1(filter);
+          filter = convertFilter(filter);
       }
       const filterExp = filter;
       let staticFilter = true;
@@ -12853,16 +12853,16 @@ ${ JSON.stringify(filterExp, null, 2) }
       }
       return false;
   }
-  function convertFilter$1(filter) {
+  function convertFilter(filter) {
       if (!filter)
           return true;
       const op = filter[0];
       if (filter.length <= 1)
           return op !== 'any';
-      const converted = op === '==' ? convertComparisonOp$1(filter[1], filter[2], '==') : op === '!=' ? convertNegation(convertComparisonOp$1(filter[1], filter[2], '==')) : op === '<' || op === '>' || op === '<=' || op === '>=' ? convertComparisonOp$1(filter[1], filter[2], op) : op === 'any' ? convertDisjunctionOp(filter.slice(1)) : op === 'all' ? ['all'].concat(filter.slice(1).map(convertFilter$1)) : op === 'none' ? ['all'].concat(filter.slice(1).map(convertFilter$1).map(convertNegation)) : op === 'in' ? convertInOp$1(filter[1], filter.slice(2)) : op === '!in' ? convertNegation(convertInOp$1(filter[1], filter.slice(2))) : op === 'has' ? convertHasOp$1(filter[1]) : op === '!has' ? convertNegation(convertHasOp$1(filter[1])) : op === 'within' ? filter : true;
+      const converted = op === '==' ? convertComparisonOp(filter[1], filter[2], '==') : op === '!=' ? convertNegation(convertComparisonOp(filter[1], filter[2], '==')) : op === '<' || op === '>' || op === '<=' || op === '>=' ? convertComparisonOp(filter[1], filter[2], op) : op === 'any' ? convertDisjunctionOp(filter.slice(1)) : op === 'all' ? ['all'].concat(filter.slice(1).map(convertFilter)) : op === 'none' ? ['all'].concat(filter.slice(1).map(convertFilter).map(convertNegation)) : op === 'in' ? convertInOp(filter[1], filter.slice(2)) : op === '!in' ? convertNegation(convertInOp(filter[1], filter.slice(2))) : op === 'has' ? convertHasOp(filter[1]) : op === '!has' ? convertNegation(convertHasOp(filter[1])) : op === 'within' ? filter : true;
       return converted;
   }
-  function convertComparisonOp$1(property, value, op) {
+  function convertComparisonOp(property, value, op) {
       switch (property) {
       case '$type':
           return [
@@ -12883,9 +12883,9 @@ ${ JSON.stringify(filterExp, null, 2) }
       }
   }
   function convertDisjunctionOp(filters) {
-      return ['any'].concat(filters.map(convertFilter$1));
+      return ['any'].concat(filters.map(convertFilter));
   }
-  function convertInOp$1(property, values) {
+  function convertInOp(property, values) {
       if (values.length === 0) {
           return false;
       }
@@ -12928,7 +12928,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           }
       }
   }
-  function convertHasOp$1(property) {
+  function convertHasOp(property) {
       switch (property) {
       case '$type':
           return true;
@@ -12948,7 +12948,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       ];
   }
 
-  function convertFilter(filter) {
+  function convertFilter$1(filter) {
       return _convertFilter(filter, {});
   }
   function _convertFilter(filter, expectedTypes) {
@@ -12963,7 +12963,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       let converted;
       if (op === '==' || op === '!=' || op === '<' || op === '>' || op === '<=' || op === '>=') {
           const [, property, value] = filter;
-          converted = convertComparisonOp(property, value, op, expectedTypes);
+          converted = convertComparisonOp$1(property, value, op, expectedTypes);
       } else if (op === 'any') {
           const children = filter.slice(1).map(f => {
               const types = {};
@@ -12986,15 +12986,15 @@ ${ JSON.stringify(filterExp, null, 2) }
               _convertFilter(['any'].concat(filter.slice(1)), {})
           ];
       } else if (op === 'in') {
-          converted = convertInOp(filter[1], filter.slice(2));
+          converted = convertInOp$1(filter[1], filter.slice(2));
       } else if (op === '!in') {
-          converted = convertInOp(filter[1], filter.slice(2), true);
+          converted = convertInOp$1(filter[1], filter.slice(2), true);
       } else if (op === 'has') {
-          converted = convertHasOp(filter[1]);
+          converted = convertHasOp$1(filter[1]);
       } else if (op === '!has') {
           converted = [
               '!',
-              convertHasOp(filter[1])
+              convertHasOp$1(filter[1])
           ];
       } else {
           converted = true;
@@ -13023,7 +13023,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           return conditions[0];
       return ['all'].concat(conditions);
   }
-  function convertComparisonOp(property, value, op, expectedTypes) {
+  function convertComparisonOp$1(property, value, op, expectedTypes) {
       let get;
       if (property === '$type') {
           return [
@@ -13079,7 +13079,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           value
       ];
   }
-  function convertInOp(property, values, negate = false) {
+  function convertInOp$1(property, values, negate = false) {
       if (values.length === 0)
           return negate;
       let get;
@@ -13117,7 +13117,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           v
       ]));
   }
-  function convertHasOp(property) {
+  function convertHasOp$1(property) {
       if (property === '$type') {
           return true;
       } else if (property === '$id') {
@@ -13138,7 +13138,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       const converted = [];
       eachLayer(style, layer => {
           if (layer.filter) {
-              layer.filter = convertFilter(layer.filter);
+              layer.filter = convertFilter$1(layer.filter);
           }
       });
       eachProperty(style, {
@@ -13665,7 +13665,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       }
   }
 
-  class ParsingError {
+  class ParsingError$1 {
       constructor(error) {
           this.error = error;
           this.message = error.message;
@@ -14200,7 +14200,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           if (propertyKey === 'text-field' && style && !style.glyphs) {
               errors.push(new ValidationError(key, value, 'use of "text-field" requires a style "glyphs" property'));
           }
-          if (propertyKey === 'text-font' && isFunction(deepUnbundle(value)) && unbundle(value.type) === 'identity') {
+          if (propertyKey === 'text-font' && isFunction$1(deepUnbundle(value)) && unbundle(value.type) === 'identity') {
               errors.push(new ValidationError(key, value, '"text-font" does not support identity functions'));
           }
       }
@@ -14658,7 +14658,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       const value = options.value;
       const valueSpec = options.valueSpec;
       const styleSpec = options.styleSpec;
-      if (valueSpec.expression && isFunction(unbundle(value))) {
+      if (valueSpec.expression && isFunction$1(unbundle(value))) {
           return validateFunction(options);
       } else if (valueSpec.expression && isExpression(deepUnbundle(value))) {
           return validateExpression(options);
@@ -15393,7 +15393,7 @@ ${ JSON.stringify(filterExp, null, 2) }
           try {
               return jsonlint.parse(style.toString());
           } catch (e) {
-              throw new ParsingError(e);
+              throw new ParsingError$1(e);
           }
       }
       return style;
@@ -15522,7 +15522,7 @@ ${ JSON.stringify(filterExp, null, 2) }
       return errors;
   }
 
-  const expression = {
+  const expression$1 = {
       StyleExpression,
       isExpression,
       isExpressionFilter,
@@ -15536,7 +15536,7 @@ ${ JSON.stringify(filterExp, null, 2) }
   const styleFunction = {
       convertFunction,
       createFunction,
-      isFunction
+      isFunction: isFunction$1
   };
   const visit = {
       eachSource,
@@ -15547,15 +15547,15 @@ ${ JSON.stringify(filterExp, null, 2) }
   validateStyle.latest = validateStyle;
 
   exports.Color = Color;
-  exports.ParsingError = ParsingError;
+  exports.ParsingError = ParsingError$1;
   exports.ValidationError = ValidationError;
   exports.composite = composite;
-  exports.convertFilter = convertFilter;
+  exports.convertFilter = convertFilter$1;
   exports.derefLayers = derefLayers;
   exports.diff = diffStyles;
-  exports.expression = expression;
+  exports.expression = expression$1;
   exports.featureFilter = createFilter;
-  exports.format = format$1;
+  exports.format = format;
   exports.function = styleFunction;
   exports.latest = v8;
   exports.migrate = migrate;
