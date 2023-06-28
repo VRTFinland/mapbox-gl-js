@@ -9,7 +9,6 @@ import {
 } from '../uniform_binding.js';
 import {mat4} from 'gl-matrix';
 import {extend} from '../../util/util.js';
-import browser from '../../util/browser.js';
 import {OverscaledTileID} from '../../source/tile_id.js';
 import type Context from '../../gl/context.js';
 import type Painter from '../painter.js';
@@ -262,7 +261,7 @@ const symbolSDFUniformValues = (
         pitchWithMap, painter, matrix, labelPlaneMatrix, glCoordMatrix, isText,
         texSize, coord, zoomTransition, mercatorCenter, invMatrix, upVector, projection), {
         'u_gamma_scale': pitchWithMap ? painter.transform.cameraToCenterDistance * Math.cos(painter.terrain ? 0 : painter.transform._pitch) : 1,
-        'u_device_pixel_ratio': browser.devicePixelRatio,
+        'u_device_pixel_ratio': painter.devicePixelRatio,
         'u_is_halo': +isHalo
     });
 };

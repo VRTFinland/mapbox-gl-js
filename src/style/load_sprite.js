@@ -11,10 +11,11 @@ import type {Callback} from '../types/callback.js';
 import type {Cancelable} from '../types/cancelable.js';
 
 export default function(baseURL: string,
+                          devicePixelRatio: number = browser.devicePixelRatio,
                           requestManager: RequestManager,
                           callback: Callback<{[_: string]: StyleImage}>): Cancelable {
     let json: any, image, error;
-    const format = browser.devicePixelRatio > 1 ? '@2x' : '';
+    const format = devicePixelRatio > 1 ? '@2x' : '';
 
     let jsonRequest: ?Cancelable = getJSON(requestManager.transformRequest(requestManager.normalizeSpriteURL(baseURL, format, '.json'), ResourceType.SpriteJSON), (err: ?Error, data: ?Object) => {
         jsonRequest = null;
