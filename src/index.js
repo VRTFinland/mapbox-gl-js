@@ -12,6 +12,7 @@ import GeolocateControl from './ui/control/geolocate_control.js';
 import AttributionControl from './ui/control/attribution_control.js';
 import ScaleControl from './ui/control/scale_control.js';
 import FullscreenControl from './ui/control/fullscreen_control.js';
+import {MapMouseEvent} from './ui/events.js';
 import Popup from './ui/popup.js';
 import Marker from './ui/marker.js';
 import Style from './style/style.js';
@@ -32,6 +33,7 @@ import {FreeCameraOptions} from './ui/free_camera.js';
 import browser from './util/browser.js';
 
 const exported = {
+    MapMouseEvent,
     version,
     supported,
     setRTLTextPlugin,
