@@ -63512,6 +63512,7 @@ index.window.performance;
 
 //      
 const exported = {
+    MapMouseEvent,
     version: index.version,
     supported,
     setRTLTextPlugin: index.setRTLTextPlugin,
