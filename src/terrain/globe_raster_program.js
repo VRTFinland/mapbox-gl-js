@@ -9,7 +9,6 @@ import {
     Uniform1f,
     UniformMatrix3f
 } from '../render/uniform_binding.js';
-import browser from '../util/browser.js';
 
 import type Context from '../gl/context.js';
 import type {UniformValues} from '../render/uniform_binding.js';
@@ -140,7 +139,8 @@ const atmosphereUniformValues = (
     starIntensity: number,
     temporalOffset: number,
     horizonAngle: number,
-    rotationMatrix: Float32Array
+    rotationMatrix: Float32Array,
+    devicePixelRatio: number,
 ): UniformValues<AtmosphereUniformsType> => ({
     'u_frustum_tl': frustumDirTl,
     'u_frustum_tr': frustumDirTr,
@@ -153,7 +153,7 @@ const atmosphereUniformValues = (
     'u_high_color': highColor,
     'u_space_color': spaceColor,
     'u_star_intensity': starIntensity,
-    'u_star_size': 5.0 * browser.devicePixelRatio,
+    'u_star_size': 5.0 * devicePixelRatio,
     'u_star_density': 0.0,
     'u_temporal_offset': temporalOffset,
     'u_horizon_angle': horizonAngle,

@@ -97,7 +97,12 @@ export default class Projection {
 
     pointCoordinate(tr: Transform, x: number, y: number, z: number): MercatorCoordinate {
         const horizonOffset = tr.horizonLineFromTop(false);
-        const clamped = new Point(x, Math.max(horizonOffset, y));
+        let xCoefficient = 1, yCoefficient = 1;
+        if (tr.map) {
+            xCoefficient = tr.map.devicePixelRatio * tr.width / tr.map.painter.width;
+            yCoefficient = tr.map.devicePixelRatio * tr.height / tr.map.painter.height;
+        }
+        const clamped = new Point(xCoefficient * x, Math.max(horizonOffset, yCoefficient * y));
         return tr.rayIntersectionCoordinate(tr.pointRayIntersection(clamped, z));
     }
 

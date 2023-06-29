@@ -7,7 +7,6 @@ import {Event, ErrorEvent, Evented} from '../util/evented.js';
 import loadTileJSON from './load_tilejson.js';
 import {postTurnstileEvent} from '../util/mapbox.js';
 import TileBounds from './tile_bounds.js';
-import browser from '../util/browser.js';
 
 import {cacheEntryPossiblyAdded} from '../util/tile_request_cache.js';
 
@@ -190,7 +189,7 @@ class RasterTileSource extends Evented implements Source {
     }
 
     loadTile(tile: Tile, callback: Callback<void>) {
-        const use2x = browser.devicePixelRatio >= 2;
+        const use2x = this.map.devicePixelRatio >= 2;
         const url = this.map._requestManager.normalizeTileURL(tile.tileID.canonical.url(this.tiles, this.scheme), use2x, this.tileSize);
         tile.request = getImage(this.map._requestManager.transformRequest(url, ResourceType.Tile), (error, data, cacheControl, expires) => {
             delete tile.request;

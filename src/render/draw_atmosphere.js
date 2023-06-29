@@ -73,7 +73,9 @@ function drawAtmosphere(painter: Painter, fog: Fog) {
         starIntensity,
         temporalOffset,
         horizonAngle,
-        rotationMatrix);
+        rotationMatrix,
+        painter.devicePixelRatio,
+    );
 
     painter.prepareDrawProgram(context, program);
 

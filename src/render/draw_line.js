@@ -9,7 +9,6 @@ import {
     linePatternUniformValues,
     lineDefinesValues
 } from './program/line_program.js';
-import browser from '../util/browser.js';
 
 import type Painter from './painter.js';
 import type SourceCache from '../source/source_cache.js';
@@ -30,7 +29,7 @@ export default function drawLine(painter: Painter, sourceCache: SourceCache, lay
 
     const depthMode = painter.depthModeForSublayer(0, DepthMode.ReadOnly);
     const colorMode = painter.colorModeForRenderPass();
-    const pixelRatio = (painter.terrain && painter.terrain.renderingToTexture) ? 1.0 : browser.devicePixelRatio;
+    const pixelRatio = (painter.terrain && painter.terrain.renderingToTexture) ? 1.0 : painter.devicePixelRatio;
 
     const dasharrayProperty = layer.paint.get('line-dasharray');
     const dasharray = dasharrayProperty.constantOr((1: any));

@@ -8,7 +8,6 @@ import {Terrain} from './terrain.js';
 import Tile from '../source/tile.js';
 import assert from 'assert';
 import {easeCubicInOut} from '../util/util.js';
-import browser from '../util/browser.js';
 import {mercatorXfromLng, mercatorYfromLat} from '../geo/mercator_coordinate.js';
 import type Painter from '../render/painter.js';
 import type SourceCache from '../source/source_cache.js';
@@ -168,7 +167,7 @@ function drawTerrainForGlobe(painter: Painter, terrain: Terrain, sourceCache: So
     const mercatorCenter = [mercatorXfromLng(tr.center.lng), mercatorYfromLat(tr.center.lat)];
     const batches = showWireframe ? [false, true] : [false];
     const sharedBuffers = painter.globeSharedBuffers;
-    const viewport = [tr.width * browser.devicePixelRatio, tr.height * browser.devicePixelRatio];
+    const viewport = [tr.width * painter.devicePixelRatio, tr.height * painter.devicePixelRatio];
     const globeMatrix = Float32Array.from(tr.globeMatrix);
     const elevationOptions = {useDenormalizedUpVectorScale: true};
 

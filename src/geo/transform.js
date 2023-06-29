@@ -26,6 +26,7 @@ import {
 } from '../geo/projection/globe_util.js';
 import {projectClamped} from '../symbol/projection.js';
 
+import type Map from '../ui/map.js';
 import type Projection from '../geo/projection/projection.js';
 import type {Elevation} from '../terrain/elevation.js';
 import type {PaddingOptions} from './edge_insets.js';
@@ -59,6 +60,7 @@ type RootTile = {
  * @private
  */
 class Transform {
+    map: ?Map;
     tileSize: number;
     tileZoom: number;
     maxBounds: ?LngLatBounds;
